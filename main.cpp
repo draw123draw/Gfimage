@@ -215,6 +215,7 @@ int ColorBar::handle(int event)
 Imagesc::Imagesc(int x,int y,int width,int height):Fl_Gl_Window(x,y,width,height){}
 void Imagesc::draw()
 {
+    // fprintf(stderr,"draw!\n");
     if(!set_mat)return;
     int i,j;
     glViewport(0,0,parent()->w(),parent()->h());
@@ -224,22 +225,24 @@ void Imagesc::draw()
     glClearColor(1,1,1,0);
     glClear(GL_COLOR_BUFFER_BIT);
     glBegin(GL_QUADS);
-
+    
+    double r,g,b;
     if(!centered_norm)
     {
-        max_a=mat[0];
-        min_a=mat[0];
-        for(i=0;i<rows*cols;i++)
+        float rr;
+        rr=max_a-min_a;
+        if(rr==1.0/0)
         {
-            if(max_a<mat[i])max_a=mat[i];
-            if(min_a>mat[i])min_a=mat[i];
+            colorbar->get_rgb(0,r,g,b);
+            glColor3f(r,g,b);
+            glVertex2i(0,0);glVertex2i(rows,0);glVertex2i(rows,cols);glVertex2i(0,cols);glEnd();
+            return;
         }
         for(i=0;i<rows;i++)
         {
             for(j=0;j<cols;j++)
             {
-                float normdata=(mat[i*cols+j]-min_a)/(max_a-min_a);
-                double r,g,b;
+                float normdata=(mat[i*cols+j]-min_a)/(rr+FLT_MIN);
                 colorbar->get_rgb(normdata,r,g,b);
                 glColor3f(r,g,b);
                 glVertex2i(i,j);
@@ -251,14 +254,11 @@ void Imagesc::draw()
     }
     else
     {
-        max_abs_a=0;
-        for(i=0;i<rows*cols;i++)
-            if(max_abs_a<abs(mat[i]))max_abs_a=abs(mat[i]);
         for(i=0;i<rows;i++)
         {
             for(j=0;j<cols;j++)
             {
-                float normdata=0.5*(mat[i*cols+j]/max_abs_a+1);
+                float normdata=0.5*(mat[i*cols+j]/(max_abs_a+FLT_MIN)+1);
                 double r,g,b;
                 colorbar->get_rgb(normdata,r,g,b);
                 glColor3f(r,g,b);
@@ -269,7 +269,7 @@ void Imagesc::draw()
             }
         }
     }
-    glEnd();   
+    glEnd();
 }
 
 void Imagesc::set_window_para(float *mat_f,int rows_f,int cols_f)
@@ -277,11 +277,26 @@ void Imagesc::set_window_para(float *mat_f,int rows_f,int cols_f)
     mat=mat_f;
     rows=rows_f;
     cols=cols_f;
+    if(!centered_norm)
+    {
+        max_a=mat[0];
+        min_a=mat[0];
+        for(int i=0;i<rows*cols;i++)
+        {
+            if(max_a<mat[i])max_a=mat[i];
+            if(min_a>mat[i])min_a=mat[i];
+        }
+    }
+    else
+    {
+        max_abs_a=0;
+        for(int i=0;i<rows*cols;i++)
+            if(max_abs_a<abs(mat[i]))max_abs_a=abs(mat[i]);
+    }
     set_mat=true;
-    redraw();
 }
 
-void Free_Counter::tc_cb(Fl_Widget *w,void *data)
+void FreeCounter::tc_cb(Fl_Widget *w,void *data)
 {
     Fl_Counter *fct=(Fl_Counter*)w;
     long long V=(long long)fct->value();
@@ -290,30 +305,30 @@ void Free_Counter::tc_cb(Fl_Widget *w,void *data)
     app->trace_slider->value(V);
 }
 
-void Free_Counter::ok_cb(Fl_Widget *w,void *data)
+void FreeCounter::ok_cb(Fl_Widget *w,void *data)
 {
-    Free_Counter *frc=(Free_Counter*)data;
-    long long V=atoi(frc->curr->value());
+    FreeCounter *frc=(FreeCounter*)data;
+    long long V=atoi(frc->fi_curr->value());
     app->trace_num=V;
     frc->value((double)V);
     app->trace_slider->value((double)V);
-    frc->small_step=atoi(frc->small_step_input->value());
-    frc->large_step=atoi(frc->large_step_input->value());
-    frc->step(frc->small_step,frc->large_step);
+    frc->step_s=atoi(frc->fi_step_s->value());
+    frc->step_l=atoi(frc->fi_step_l->value());
+    frc->step(frc->step_s,frc->step_l);
     app->change_profile();
     Fl::delete_widget(frc->counter_set);
 }
 
-Free_Counter::Free_Counter(int x,int y,int w,int h):Fl_Counter(x,y,w,h)
+FreeCounter::FreeCounter(int x,int y,int w,int h):Fl_Counter(x,y,w,h)
 {
-    small_step=1;
-    large_step=app->w();
+    step_s=1;
+    step_l=app->w();
     bounds(0,app->traces-app->trace_s);
-    step(small_step,large_step);
+    step(step_s,step_l);
     callback(tc_cb);
 }
 
-int Free_Counter::handle(int event)
+int FreeCounter::handle(int event)
 {
     int ret=Fl_Counter::handle(event);
     switch(event)
@@ -321,20 +336,20 @@ int Free_Counter::handle(int event)
         case FL_PUSH:
         if(x()+w()*0.3<Fl::event_x()&&Fl::event_x()<x()+w()*0.7)
         {
-            char small_step_c[10],large_step_c[10],curr_c[20];
-            itoa(small_step,small_step_c,10);
-            itoa(large_step,large_step_c,10);
-            itoa(app->trace_num,curr_c,10);
+            char cstep_s[10],cstep_l[10],ccurr[20];
+            itoa(step_s,cstep_s,10);
+            itoa(step_l,cstep_l,10);
+            itoa(app->trace_num,ccurr,10);
             
             counter_set=new Fl_Window(300,150,"请输入你想输入的参数喵");
             counter_set->set_modal();
             counter_set->begin();
-            curr=new Fl_Int_Input(80,10,100,30,"current");
-            curr->value(curr_c);
-            small_step_input=new Fl_Int_Input(80,50,100,30,"small step");
-            small_step_input->value(small_step_c);
-            large_step_input=new Fl_Int_Input(80,90,100,30,"large step");
-            large_step_input->value(large_step_c);
+            fi_curr=new Fl_Int_Input(80,10,100,30,"current");
+            fi_curr->value(ccurr);
+            fi_step_s=new Fl_Int_Input(80,50,100,30,"small step");
+            fi_step_s->value(cstep_s);
+            fi_step_l=new Fl_Int_Input(80,90,100,30,"large step");
+            fi_step_l->value(cstep_l);
             set_ok=new Fl_Button(200,50,80,30,"确认");
             set_ok->callback(ok_cb,this);
             counter_set->end();
@@ -346,23 +361,24 @@ int Free_Counter::handle(int event)
     return ret;
 }
 
-void Free_Counter_Header::tc_cb(Fl_Widget *w,void *data)
+void FreeCounterHeader::tc_cb(Fl_Widget *w,void *data)
 {
     Fl_Counter *fc=(Fl_Counter*)w;
-    tab->trace_num=(long long)fc->value();
-    tab->get_hdr();
+    headertable->trace_num=(long long)fc->value()-1;
+    headertable->get_hdr();
 }
 
-Free_Counter_Header::Free_Counter_Header(int X,int Y,int W,int H,const char *title):Fl_Counter(X,Y,W,H,title)
+FreeCounterHeader::FreeCounterHeader(int X,int Y,int W,int H,const char *title):Fl_Counter(X,Y,W,H,title)
 {
     type(FL_SIMPLE_COUNTER);
     step(1);
-    bounds(0,app->traces-tab->trace_s_h);
+    bounds(1,app->traces-headertable->trace_s_h+1);
+    value(1);
     align(FL_ALIGN_TOP);
     callback(tc_cb);
 };
 
-int Free_Counter_Header::handle(int event)
+int FreeCounterHeader::handle(int event)
 {
     int ret=Fl_Counter::handle(event);
     switch(event)
@@ -370,21 +386,24 @@ int Free_Counter_Header::handle(int event)
         case FL_PUSH:
         if(x()+w()*3/16<Fl::event_x()&&Fl::event_x()<x()+w()*13/16)
         {
-            char curr_c[20];
-            itoa(tab->trace_num,curr_c,10);
+            char ccurr[32],trace_range_s[64];
+            itoa(headertable->trace_num+1,ccurr,10);
+            sprintf(trace_range_s,"current:(1-%lld)",app->traces-headertable->trace_s_h+1);
             counter_set=new Fl_Window(300,150,"请输入你想输入的道数喵");
             counter_set->set_modal();
             counter_set->begin();
-            curr=new Fl_Int_Input(80,10,100,30,"current");
-            curr->value(curr_c);
+            fi_curr=new Fl_Int_Input(120,10,100,30);
+            fi_curr->copy_label(trace_range_s);
+            fi_curr->value(ccurr);
             set_ok=new Fl_Button(200,50,80,30,"确认");
             set_ok->callback([](Fl_Widget *,void *data)
             {
-                Free_Counter_Header *fch=(Free_Counter_Header*)data;
-                long long V=atoi(fch->curr->value());
-                tab->trace_num=V;
+                FreeCounterHeader *fch=(FreeCounterHeader*)data;
+                long long V=atoi(fch->fi_curr->value());
+                headertable->trace_num=V-1;
+                fch->value(V);
                 Fl::delete_widget(fch->counter_set);
-                tab->get_hdr();
+                headertable->get_hdr();
             },this);
             counter_set->end();
             counter_set->show();
@@ -439,18 +458,18 @@ void App::change_profile()
 
 void App::swap_bytes()
 {
-    unsigned char *p,tmp;
+    unsigned char *p,tmp_c;
     for(long long tr=0;tr<trace_s*samples;tr++)
     {
         p=(unsigned char*)&seis[tr];
-        p[0]=tmp,p[0]=p[3];p[3]=tmp;
-        p[1]=tmp,p[1]=p[2];p[2]=tmp;
+        p[0]=tmp_c,p[0]=p[3];p[3]=tmp_c;
+        p[1]=tmp_c,p[1]=p[2];p[2]=tmp_c;
     }
 }
 
 void App::save_cb(Fl_Widget *widget,void *)
 {
-    if(app->SaveWin==NULL){app->SaveWin=new Fl_Window(400,200,"Save");app->PropertyWin->icon(ico);}
+    if(app->SaveWin==NULL){app->SaveWin=new Fl_Window(400,200,"Save");app->SaveWin->icon(ico);}
     else{app->SaveWin->show();return;}//子窗口关闭后仅隐藏
     app->SaveWin->show();
 }
@@ -458,7 +477,7 @@ void App::save_cb(Fl_Widget *widget,void *)
 void App::property_cb(Fl_Widget *widget,void *)
 {
     if(app->PropertyWin==NULL){app->PropertyWin=new Fl_Window(500,500,"property");app->PropertyWin->icon(ico);}
-    else {app->PropertyWin->show();return;}//防止老六开很多窗口
+    else {app->PropertyWin->show();return;}//防止开很多窗口
 
     char property_text[512];
     sprintf(property_text,"traces:%lld\nsamples:%d\n",app->traces,app->samples);
@@ -472,12 +491,13 @@ void App::property_cb(Fl_Widget *widget,void *)
 
 void App::hdr_cb(Fl_Widget *widget,void *)
 {
-    if(app->HdrWin==NULL){app->HdrWin=new Fl_Window(600,600,"Header Text");app->HdrWin->icon(ico);}
+    if(app->HdrWin==NULL){app->HdrWin=new Fl_Window(660,600,"Headers");app->HdrWin->icon(ico);}
     else {app->HdrWin->show();return;}
     app->HdrWin->begin();
     {
-        tab=new Header_Table(20,20,460,440);
-        Free_Counter_Header *fch=new Free_Counter_Header(20,550,160,30,"Trace:");
+        headertable=new HeaderTable(20,20,460,440,"Trace Header");
+        vht=new VHeaderTable(500,20,140,560,"Volume Header");
+        FreeCounterHeader *fch=new FreeCounterHeader(20,550,160,30,"Trace:");
     }
     app->HdrWin->end();
     app->HdrWin->show();
@@ -487,7 +507,6 @@ void App::cutter_separater_cb(Fl_Widget *widget,void *)
 {
     if(app->CroppingWin==NULL)app->CroppingWin=new Fl_Window(400,200,"Cropping");
     else {app->CroppingWin->show();return;}
-
     app->CroppingWin->show();
 }
 
@@ -525,6 +544,7 @@ void App::enhance_cb(Fl_Widget *widget,void *)
     app->enhance_cnt++;
     for(int i=0;i<app->trace_s*app->samples;i++)
         app->seis[i]=app->seis[i]<0?-log(1-app->seis[i]):log(1+app->seis[i]);
+    fwin->set_window_para(app->seis,app->trace_s,app->samples);
     fwin->redraw();
 }
 
@@ -534,6 +554,7 @@ void App::attenua_cb(Fl_Widget *widget,void *)
     app->enhance_cnt--;
     for(int i=0;i<app->trace_s*app->samples;i++)
         app->seis[i]=app->seis[i]<0?1-exp(-app->seis[i]):exp(app->seis[i])-1;
+    fwin->set_window_para(app->seis,app->trace_s,app->samples);
     fwin->redraw();
 }
 
@@ -557,7 +578,7 @@ void App::load_clr_cb(Fl_Widget *w,void *)
         colorbar->set_color_points(find_c_num,custom_color);
         colorbar->sort_colors();
         colorbar->redraw();
-        app->ClrbWin->redraw();
+        app->ColorbarWin->redraw();
         fwin->redraw();
         fclose(fpc);
         free(custom_color);
@@ -575,7 +596,6 @@ void App::save_clr_cb(Fl_Widget *w,void *)
         default:
         FILE *fpc;
         fpc=fl_fopen(app->fcc->filename(),"w");
-        fprintf(fpc,"%d\n",colorbar->c_num);
         for(int i=0;i<colorbar->c_num;i++)
         {
             uchar r,g,b;
@@ -590,6 +610,7 @@ void App::save_sgy_data_cb(Fl_Widget *w,void *)
     FILE *fpo;
     int i,j;
     app->fc->title("Save As");
+    
     app->fc->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
     switch(app->fc->show())
     {
@@ -597,10 +618,11 @@ void App::save_sgy_data_cb(Fl_Widget *w,void *)
         case 1: break;
         default:
         fpo=fl_fopen(app->fc->filename(),"wb");
+        
         char asc_out[3200]={32};
         int tb_len=app->hdr_text->buffer()->length();
         unsigned char ebc_out[40][80]={0};
-        for(i=0;i<(tb_len>3200)?3200:tb_len;i++)
+        for(i=0;i<(tb_len>3200?3200:tb_len);i++)
             asc_out[i]=app->tbuff->text()[i];
 
         for(i=0;i<40;i++)
@@ -638,7 +660,7 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     menus->add("Tools/Textual Header Editor",0,[](Fl_Widget *,void *){app->TextWin->show();},0,FL_MENU_INACTIVE);
     menus->add("Tools/Headers",0,hdr_cb,0,FL_MENU_INACTIVE);
     menus->add("Tools/Cutter-Separater",0,cutter_separater_cb,0,FL_MENU_INACTIVE);
-    menus->add("Tools/色标",0,[](Fl_Widget *w,void *){app->ClrbWin->show();},0,FL_MENU_DIVIDER);
+    menus->add("Tools/色标",0,[](Fl_Widget *w,void *){app->ColorbarWin->show();},0,FL_MENU_DIVIDER);
     menus->add("Tools/图像增强","^q",enhance_cb,0,FL_MENU_INACTIVE);
     menus->add("Tools/图像减弱","^w",attenua_cb,0,FL_MENU_INACTIVE);
     menus->add("data?/ibm-le",0,format_cb,0,FL_MENU_INACTIVE|FL_MENU_RADIO);
@@ -650,6 +672,7 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
         Fl_Menu_Bar *bar = (Fl_Menu_Bar*)w;
         const Fl_Menu_Item *item = bar->mvalue();
         fwin->centered_norm=item->value()?true:false;
+        fwin->set_window_para(app->seis,app->trace_s,app->samples);
         fwin->redraw();
     },this,FL_MENU_INACTIVE|FL_MENU_TOGGLE); 
     
@@ -661,16 +684,16 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     resizable(*fwin);
     end();
 
-    ClrbWin=new Fl_Window(660,300,"Colorbar");
-    ClrbWin->icon(ico);
-    ClrbWin->begin();
+    ColorbarWin=new Fl_Window(660,300,"Colorbar");
+    ColorbarWin->icon(ico);
+    ColorbarWin->begin();
     {
-        const int cheight2=100,cheight3=200;
-        Fl_Box *explaination=new Fl_Box(200,150,400,140);
-        explaination->box(FL_FLAT_BOX);
+        const int cheight2=170,cheight3=220;
+        Fl_Box *explaination=new Fl_Box(200,cheight2,220,120);
+        explaination->box(FL_UP_BOX);
         explaination->align(FL_ALIGN_TOP|FL_ALIGN_LEFT|FL_ALIGN_INSIDE);
         explaination->label("双击色标点以更改颜色\n\n输入数据格式:\n第一行为色标点个数\n第二行开始为0-1之间的4列实数\n第一列为色标值,后三列为r,g,b值\n以逗号隔开");
-        // explaination->color(FL_RED);
+        
         Fl_Button *swap_clr=new Fl_Button(50,cheight2,100,30,"reverse");
         Fl_Button *load_clr=new Fl_Button(50,cheight3,100,30,"load colormap");
         load_clr->callback(load_clr_cb);
@@ -708,16 +731,20 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
             colorbar->redraw();
             fwin->redraw();
         });
+        chart=new Fl_Chart(30,90,600,70);
+        chart->type(FL_BAR_CHART);
+        chart->hide();
     }
-    ClrbWin->redraw();
-    ClrbWin->end();
-    ClrbWin->hide();
+    ColorbarWin->redraw();
+    ColorbarWin->end();
+    ColorbarWin->hide();
 }
 
 App::~App()
 {
     fclose(fpi);
     free(seis);
+    free(histo);
 }
 
 int App::handle(int event)
@@ -745,11 +772,11 @@ int App::handle(int event)
 void App::open_figure()
 {
     fwin->set_window_para(seis,trace_s,samples);
+    fwin->redraw();
     fwin->show();
     for(int cnt=0;cnt<enhance_cnt;cnt++)
         for(int i=0;i<trace_s*samples;i++)
             seis[i]=seis[i]<0?-log(1-seis[i]):log(1+seis[i]);
-    redraw();
     if(first_read)
     {
         begin();
@@ -781,7 +808,6 @@ void App::open_figure()
         }
         TextWin->end();
         TextWin->hide();
-
         open_button->hide();
         Fl_Menu_Item *item=(Fl_Menu_Item*)menus->find_item("Tools/Cutter-Separater");item->flags=0;//激活按钮
         item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=0;
@@ -804,7 +830,7 @@ void App::open_figure()
         {
             begin();
             trace_slider=new Fl_Value_Slider(w()-350,0,150,height_of_menu);
-            trace_counter=new Free_Counter(w()-200,0,200,height_of_menu);
+            trace_counter=new FreeCounter(w()-200,0,200,height_of_menu);
             end();
             trace_slider->align(FL_ALIGN_LEFT);
             trace_slider->bounds(0,traces-trace_s);
@@ -814,12 +840,21 @@ void App::open_figure()
         }
         first_read=false;
     }
+    chart->show();
+    histo=(int*)calloc(bin_num,4);//bin_num==直方图区间个数
+    if(fwin->max_a-fwin->min_a==1.0/0)return;
+    for(int i=0;i<trace_s*samples;i++)
+    {
+        int bin=fwin->centered_norm?(int)(bin_num*0.5*(seis[i]/(fwin->max_abs_a+FLT_MIN)+1)):(int)(bin_num*(seis[i]-fwin->min_a)/(fwin->max_a-fwin->min_a+FLT_MIN));
+        if(bin==bin_num)bin--;
+        histo[bin]++;
+    }
+    for(int i=0;i<bin_num;i++)chart->add(histo[i]);
 }
 
 void App::read_data(const char *fname)
 {
     int i,j;
-    
     fpi=fl_fopen(fname,"rb");
     if(fpi==NULL)
     {
@@ -838,7 +873,7 @@ void App::read_data(const char *fname)
     fread(hdr,1,3600,fpi);
     if(hdr[3224]+hdr[3225]!=1&&hdr[3224]+hdr[3225]!=5)
     {
-        return; //
+        return;
     }
     is_pc=(hdr[3224]+hdr[3225]==1)?false:true;
     if(hdr[3224]==0)
@@ -861,7 +896,7 @@ void App::read_data(const char *fname)
     {
         fseeko64(fpi,240,1);
         fread(seis+samples*i,4,samples,fpi);
-    }//
+    }
     if(!is_pc&&!is_le)ieee2ibm();
     else if(is_pc&&!is_le)swap_bytes();
     else if(!is_pc&&is_le)
@@ -892,24 +927,31 @@ void App::ieee2ibm()//公式已经考虑了字节序，无需再用swap_bytes转
     }
 }
 
-void Header_Table::draw_cell(TableContext context, int ROW, int COL, int X, int Y, int W, int H)
+void HeaderTable::draw_cell(TableContext context, int ROW, int COL, int X, int Y, int W, int H)
 {
     static char s[32];
     switch(context)
     {
     case CONTEXT_STARTPAGE:
-        fl_font(FL_HELVETICA, 16);
-        return;
-    case CONTEXT_COL_HEADER:
-        sprintf(s,"trace%d",COL+1);
-        DrawHeader(s,X,Y,W,H);
+        fl_font(FL_HELVETICA,12);
         return;
     case CONTEXT_ROW_HEADER:
-        sprintf(s,"b%d",ROW+1);
+        if(ROW==0)
+        {
+            DrawHeader("Trace:",X,Y,W,H);
+            return;
+        }
+        sprintf(s,"b%d",ROW);
         DrawHeader(s,X,Y,W,H);
         return;
     case CONTEXT_CELL:
-        sprintf(s,"%d",hdrbytes_s[COL*240+ROW]);
+        if(ROW==0)
+        {
+            sprintf(s,"%lld",trace_num+COL+1);
+            DrawHeader(s,X,Y,W,H);
+            return;
+        }
+        sprintf(s,"%d",hdrbytes_s[COL*240+ROW-1]);
         fl_push_clip(X,Y,W,H);
         fl_draw_box(FL_THIN_UP_BOX,X,Y,W,H,row_selected(ROW)?FL_YELLOW:FL_WHITE);
         fl_color(FL_GRAY0);fl_draw(s,X,Y,W,H,FL_ALIGN_CENTER);
@@ -920,7 +962,7 @@ void Header_Table::draw_cell(TableContext context, int ROW, int COL, int X, int 
     }
 }
 
-void Header_Table::DrawHeader(const char *s, int X, int Y, int W, int H)
+void HeaderTable::DrawHeader(const char *s, int X, int Y, int W, int H)
 {
     fl_push_clip(X,Y,W,H);
     fl_draw_box(FL_THIN_UP_BOX,X,Y,W,H,row_header_color());
@@ -929,20 +971,20 @@ void Header_Table::DrawHeader(const char *s, int X, int Y, int W, int H)
     fl_pop_clip();
 }
 
-Header_Table::Header_Table(int X,int Y,int W,int H):Fl_Table_Row(X,Y,W,H)
+HeaderTable::HeaderTable(int X,int Y,int W,int H,const char *title):Fl_Table_Row(X,Y,W,H,title)
 {
     hdrbytes_s=(unsigned char*)malloc(trace_s_h*240);
-    rows(240);
+    rows(241);
     row_height_all(20);
     row_header(1);
     cols(trace_s_h);
     col_width_all(80);
-    col_header(1);
+    col_header(0);
     end();
     get_hdr();
 }
 
-void Header_Table::get_hdr()
+void HeaderTable::get_hdr()
 {
     fseeko64(app->fpi,3600+trace_num*(240+4*app->samples),0);
     for(int i=0;i<trace_s_h;i++)
@@ -953,9 +995,52 @@ void Header_Table::get_hdr()
     redraw();
 }
 
-Header_Table::~Header_Table()
+HeaderTable::~HeaderTable()
 {
     free(hdrbytes_s);
+}
+
+VHeaderTable::VHeaderTable(int X,int Y,int W,int H,const char *title):Fl_Table(X,Y,W,H,title)
+{
+    fseeko64(app->fpi,3200,0);
+    fread(vhdrbytes,1,400,app->fpi);
+    rows(400);
+    row_header(1);
+    row_height_all(20);
+    row_resize(0);
+    cols(1);
+    col_header(0);
+    col_width_all(80);
+    col_resize(0);
+    end();
+}
+
+void VHeaderTable::draw_cell(TableContext context,int ROW,int COL,int X,int Y,int W,int H)
+{
+    static char s[32];
+    switch(context)
+    {
+    case CONTEXT_STARTPAGE:
+        fl_font(FL_HELVETICA, 12);
+        return;
+    case CONTEXT_ROW_HEADER:
+        sprintf(s,"%d:",ROW+3201);
+        fl_push_clip(X,Y,W,H);
+        fl_draw_box(FL_THIN_UP_BOX, X,Y,W,H, row_header_color());
+        fl_color(FL_BLACK);
+        fl_draw(s,X,Y,W,H,FL_ALIGN_CENTER);
+        fl_pop_clip();
+        return;
+    case CONTEXT_CELL:
+        sprintf(s,"%d",vhdrbytes[ROW]);
+        fl_push_clip(X,Y,W,H);
+        fl_draw_box(FL_THIN_UP_BOX,X,Y,W,H,is_selected(ROW,COL)?FL_YELLOW:FL_WHITE);
+        fl_color(FL_GRAY0);fl_draw(s,X,Y,W,H,FL_ALIGN_CENTER);
+        fl_pop_clip();
+        return;
+    default:
+        return;
+    }
 }
 
 int main(int argc, char **argv)
