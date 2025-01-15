@@ -46,7 +46,7 @@ int ColorPoint::handle(int event)
     redraw();
     colorbar->parent()->redraw();
     colorbar->redraw();
-    if(fwin!=nullptr)fwin->redraw();
+    if(ims!=nullptr)ims->redraw();
     return ret;
 }
 
@@ -101,7 +101,7 @@ void ColorBar::set_color_points(const int clr_num,const float *defalut_clr)
     sort_colors();
     redraw();
     parent()->redraw();
-    fwin->redraw();
+    ims->redraw();
 }
 
 void ColorBar::get_rgb(float f01,double &r,double &g,double &b)
@@ -136,7 +136,7 @@ void ColorBar::remove_color_point(int idx)
     colors=(ColorPoint**)realloc(colors,c_num*sizeof(ColorPoint*));
     sort_colors();
     redraw();
-    if(fwin!=nullptr)fwin->redraw();
+    if(ims!=nullptr)ims->redraw();
 }
 
 void ColorBar::sort_colors()
@@ -166,21 +166,17 @@ void ColorBar::draw()
 {
     int i;
     double r,g,b;
-    glViewport(0,0,w(),h());
-    glMatrixMode(GL_PROJECTION);
     glLoadIdentity();//重置
-    glOrtho(0,w(),h(),0,-1,1);
+    glOrtho(0,w(),0,h(),-1,1);
     glClearColor(1,1,1,0);
     glClear(GL_COLOR_BUFFER_BIT);
-    glBegin(GL_QUADS);
+    glBegin(GL_QUAD_STRIP);
     for(i=0;i<w();i++)
     {
         get_rgb(i/(float)w(),r,g,b);
         glColor3f(r,g,b);
         glVertex2i(i,0);
         glVertex2i(i,h());
-        glVertex2i(i+1,h());
-        glVertex2i(i+1,0);
     }
     glEnd();
 }
@@ -200,10 +196,8 @@ int ColorBar::handle(int event)
         parent()->begin();
         colors[c_num]=new ColorPoint(Fl::event_x()+x()-cbox_s,cbox_height,cbox_s*2,cbox_s*2,r,g,b,this);
         parent()->end();
-
         fs[c_num]=fidx;
         c_num++;
-        //排序色标
         sort_colors();
         parent()->redraw();
         return 1;
@@ -214,20 +208,16 @@ int ColorBar::handle(int event)
 Imagesc::Imagesc(int x,int y,int width,int height):Fl_Gl_Window(x,y,width,height){}
 void Imagesc::draw()
 {
-    // fprintf(stderr,"draw!\n");
-    if(!set_mat)return;
     int i,j;
-    if(!valid())
+    if(!isvalid)
     {
-        glViewport(0,0,w(),h());
-        glMatrixMode(GL_PROJECTION);
         glLoadIdentity();//重置
-        glOrtho(0,rows,cols,0,-1,1);
+        glOrtho(0,app->trace_s,app->samples,0,-1,1);
         glClearColor(1,1,1,0);
         glClear(GL_COLOR_BUFFER_BIT);
+        isvalid=true;
     }
     glBegin(GL_QUADS);
-    
     double r,g,b;
     if(!c_norm)
     {
@@ -237,14 +227,14 @@ void Imagesc::draw()
         {
             colorbar->get_rgb(0,r,g,b);
             glColor3f(r,g,b);
-            glVertex2i(0,0);glVertex2i(rows,0);glVertex2i(rows,cols);glVertex2i(0,cols);glEnd();
+            glVertex2i(0,0);glVertex2i(app->trace_s,0);glVertex2i(app->trace_s,app->samples);glVertex2i(0,app->samples);glEnd();
             return;
         }
-        for(i=0;i<rows;i++)
+        for(i=0;i<app->trace_s;i++)
         {
-            for(j=0;j<cols;j++)
+            for(j=0;j<app->samples;j++)
             {
-                float normdata=(mat[i*cols+j]-min_a)/(rr+FLT_MIN);
+                float normdata=(app->seis[i*app->samples+j]-min_a)/(rr+FLT_MIN);
                 colorbar->get_rgb(normdata,r,g,b);
                 glColor3f(r,g,b);
                 glVertex2i(i,j);
@@ -256,11 +246,11 @@ void Imagesc::draw()
     }
     else
     {
-        for(i=0;i<rows;i++)
+        for(i=0;i<app->trace_s;i++)
         {
-            for(j=0;j<cols;j++)
+            for(j=0;j<app->samples;j++)
             {
-                float normdata=0.5*(mat[i*cols+j]/(max_abs_a+FLT_MIN)+1);
+                float normdata=0.5*(app->seis[i*app->samples+j]/(max_abs_a+FLT_MIN)+1);
                 double r,g,b;
                 colorbar->get_rgb(normdata,r,g,b);
                 glColor3f(r,g,b);
@@ -274,35 +264,43 @@ void Imagesc::draw()
     glEnd();
 }
 
-void Imagesc::set_window_para(float *mat_f,int rows_f,int cols_f)
+void Imagesc::set_window_para()
 {
-    mat=mat_f;
-    rows=rows_f;
-    cols=cols_f;
     if(!c_norm)
     {
-        max_a=mat[0];
-        min_a=mat[0];
-        for(int i=0;i<rows*cols;i++)
+        max_a=app->seis[0];
+        min_a=app->seis[0];
+        for(int i=0;i<app->trace_s*app->samples;i++)
         {
-            if(max_a<mat[i])max_a=mat[i];
-            if(min_a>mat[i])min_a=mat[i];
+            if(max_a<app->seis[i])max_a=app->seis[i];
+            if(min_a>app->seis[i])min_a=app->seis[i];
         }
     }
     else
     {
         max_abs_a=0;
-        for(int i=0;i<rows*cols;i++)
-            if(max_abs_a<fabs(mat[i]))max_abs_a=fabs(mat[i]);
+        for(int i=0;i<app->trace_s*app->samples;i++)
+            if(max_abs_a<fabs(app->seis[i]))max_abs_a=fabs(app->seis[i]);
     }
-    set_mat=true;
 }
 
 int Imagesc::handle(int event)
 {
     int ret=Fl_Gl_Window::handle(event);
+    int px,py;
+    px=app->trace_s*(Fl::event_x()+1)/w();
+    py=app->samples*(Fl::event_y()+1)/h();
     switch(event)
     {
+        case FL_MOVE:
+        if(!app->first_read&&Fl::belowmouse()==ims)
+        {
+            sprintf(app->mxy,"X:%d\tY:%d",px,py);
+            app->where_mouse_box->copy_label(app->mxy);
+            sprintf(app->amp_c,"%g",app->seis[px*app->samples+py]);
+            tooltip(app->amp_c);
+        }
+        break;
         case FL_DND_ENTER:
         case FL_DND_DRAG:
         case FL_DND_RELEASE:ret=1;break;
@@ -311,6 +309,99 @@ int Imagesc::handle(int event)
         app->read_data(Fl::event_text());
     }
     return ret;
+}
+
+Scatter::Scatter(int X,int Y,int W,int H):Fl_Gl_Window(X,Y,W,H)
+{
+    xs=(int*)malloc(4*app->traces);
+    ys=(int*)malloc(4*app->traces);
+}
+
+Scatter::~Scatter()
+{
+    free(xs);
+    free(ys);
+}
+
+void Scatter::findmvalues(int byte1,int byte2,int &max1,int &min1,int *arr1,int &max2,int &min2,int *arr2)
+{
+    mapview->begin();
+    Progress *progress=new Progress(160,30,240,25);
+    mapview->end();
+    // mapview->redraw();
+    int dbyte,v,dbyte2,p100=0;
+    char p100_c[36];
+    unsigned char *p,tmp;
+    p=(unsigned char*)&v;
+    dbyte=byte2-byte1-4;
+    dbyte2=240+4*app->samples-byte2-3;
+    for(long long tr=0;tr<app->traces;tr++)
+    {//发现if写在循环里面和在循环外面，运行效率差不了太多，因此为了简化代码就写里面好了
+        if(tr%(long long) (app->traces/100.0)==0)
+        {
+            sprintf(p100_c,"计算进度:%d%%,单击以停止...",p100);
+            progress->copy_label(p100_c);
+            progress->value(p100++);
+            Fl::check();
+        }
+        if(progress->stop)
+        {
+            ret_flag=true;
+            break;
+        }
+        fseeko64(app->fpi,byte1-1,1);
+        fread(&v,1,4,app->fpi);
+        if(!app->is_le){tmp=p[0];p[0]=p[3];p[3]=tmp;tmp=p[1];p[1]=p[2];p[2]=tmp;}
+        arr1[tr]=v;
+        max1=max1<v?v:max1;
+        min1=min1>v?v:min1;
+        fseeko64(app->fpi,dbyte,1);
+        fread(&v,1,4,app->fpi);
+        if(!app->is_le){tmp=p[0];p[0]=p[3];p[3]=tmp;tmp=p[1];p[1]=p[2];p[2]=tmp;}
+        arr2[tr]=v;
+        max2=max2<v?v:max2;
+        min2=min2>v?v:min2;
+        fseeko64(app->fpi,dbyte2,1);
+    }
+    mapview->remove(progress);mapview->redraw();
+}
+
+void Scatter::draw()
+{
+    if(!isvalid)
+    {
+        glClearColor(.5,.5,.5,0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
+    glViewport(30,30,w()-30,h()-30);
+    glBegin(GL_QUADS);
+    glColor3f(0,0,0);
+    glVertex2i(-1,-1);
+    glVertex2i(1,-1);
+    glVertex2i(1,1);
+    glVertex2i(-1,1);
+    glEnd();
+
+    glViewport(0,0,w(),h());
+    glColor3f(1,1,1);
+    gl_font(FL_TIMES,12);
+    gl_draw(ax_buf[0],-1.0f,.95f);
+    gl_draw("x",-.95f,0.1f);
+    gl_draw(ax_buf[1],-1.0f,-.85f);
+    gl_draw(ax_buf[2],-.85f,-.95f);
+    gl_draw("y",0.0f,-.95f);
+    gl_draw(ax_buf[3],.9f,-.95f);
+    glEnd();
+
+    glLoadIdentity();
+    glViewport(30,30,w()-30,h()-30);
+    glOrtho(xmin-1,xmax+1,ymin-1,ymax+1,-1,1);
+    glBegin(GL_POINTS);
+    glColor3f(1,1,1);
+    for(long long tr=0;tr<app->traces;tr++)
+        glVertex2i(xs[tr],ys[tr]);
+    glEnd();
 }
 
 void FreeCounter::tc_cb(Fl_Widget *w,void *)
@@ -331,24 +422,10 @@ void FreeCounter::tc_cb_bin(Fl_Widget *w,void *)
     app->trace_slider->value(V+1);
 }
 
-void FreeCounter::ok_cb(Fl_Widget *,void *data)
-{
-    FreeCounter *frc=(FreeCounter*)data;
-    long long V=atoi(frc->fi_curr->value());
-    app->trace_num=V;
-    frc->value((double)V);
-    app->trace_slider->value((double)V);
-    frc->step_s=atoi(frc->fi_step_s->value());
-    frc->step_l=atoi(frc->fi_step_l->value());
-    frc->step(frc->step_s,frc->step_l);
-    app->change_profile();
-    Fl::delete_widget(frc->counter_set);
-}
-
 FreeCounter::FreeCounter(int x,int y,int w,int h):Fl_Counter(x,y,w,h)
 {
     step_s=1;
-    step_l=app->w();
+    step_l=app->w()/2;
     bounds(1,app->traces-app->trace_s);
     step(step_s,step_l);
     if(app->is_bin) callback(tc_cb_bin);
@@ -377,7 +454,19 @@ int FreeCounter::handle(int event)
             fi_step_l=new Fl_Int_Input(80,90,100,30,"large step");
             fi_step_l->value(cstep_l);
             set_ok=new Fl_Button(200,50,80,30,"确认");
-            set_ok->callback(ok_cb,this);
+            set_ok->callback([](Fl_Widget *,void *data)
+            {
+                FreeCounter *frc=(FreeCounter*)data;
+                long long V=atoi(frc->fi_curr->value());
+                app->trace_num=V;
+                frc->value((double)V);
+                app->trace_slider->value((double)V);
+                frc->step_s=atoi(frc->fi_step_s->value());
+                frc->step_l=atoi(frc->fi_step_l->value());
+                frc->step(frc->step_s,frc->step_l);
+                app->change_profile();
+                Fl::delete_widget(frc->counter_set);
+            },this);
             counter_set->end();
             counter_set->show();
         }
@@ -393,7 +482,7 @@ FreeCounterHeader::FreeCounterHeader(int X,int Y,int W,int H,const char *title):
     step(1);
     bounds(1,app->traces-headertable->trace_s_h+1);
     value(1);
-    align(FL_ALIGN_TOP);
+    align(FL_ALIGN_LEFT);
     callback([](Fl_Widget *w,void *)
     {
         Fl_Counter *fcr=(Fl_Counter*)w;
@@ -498,8 +587,7 @@ void App::change_profile_bin()
 }
 
 void App::format_correct(float *seis_,int length)
-{
-    //fmt, 0= ieee-le, 1= ibm-le, 2= ieee-be, 3= ibm-be, 4= int-le, 5= int32-be
+{//fmt, 0= ieee-le, 1= ibm-le, 2= ieee-be, 3= ibm-be, 4= int-le, 5= int32-be
     unsigned char *p,*pi;
     int seis_i;
     pi=(unsigned char*)&seis_i;
@@ -546,12 +634,25 @@ void App::swap_bytes(float *seis_b,int length)
     }
 }
 
+void App::update_endian_menu(Fl_Menu_Bar *endian_menu)
+{
+    if(app->is_le)
+    {
+        Fl_Menu_Item *item=(Fl_Menu_Item*)endian_menu->find_item("little-endian");
+        item->set(); //默认为big-endian
+    }
+    else
+    {
+        Fl_Menu_Item *item=(Fl_Menu_Item*)endian_menu->find_item("big-endian");
+        item->set(); //默认为big-endian
+    }
+}
+
 void Property::global_but_cb(Fl_Widget *,void *)
 {
     fseeko64(app->fpi,3600,0);
     float *strace=(float*)malloc(app->samples*4);
     property->begin();
-    property->stop=false;
     Progress *progress=new Progress(200,300,240,30);
     property->end();
     int p100=0;
@@ -574,7 +675,6 @@ void Property::global_but_cb(Fl_Widget *,void *)
             property->fmax=property->fmax<strace[j]?strace[j]:property->fmax;
             property->fmin=property->fmin>strace[j]?strace[j]:property->fmin;
         }
-        
     }
     property->remove(progress);property->redraw();
     free(strace);
@@ -584,7 +684,7 @@ void Property::global_but_cb(Fl_Widget *,void *)
 
 Property::Property(int W,int H,const char* title):Fl_Window(W,H,title)
 {
-    icon(ico);
+    default_icon(ico);
     float dt;
     dt=(app->hdr[3224]==0)?(app->hdr[3216]*256+app->hdr[3217]):(app->hdr[3216]+app->hdr[3217]*256);
     dt/=1000;
@@ -605,7 +705,11 @@ Property::Property(int W,int H,const char* title):Fl_Window(W,H,title)
     show();
 }
 
-Progress::Progress(int X,int Y,int W,int H):Fl_Progress(X,Y,W,H){}
+Progress::Progress(int X,int Y,int W,int H):Fl_Progress(X,Y,W,H)
+{
+    stop=false;
+}
+
 int Progress::handle(int event)
 {
     if(event==FL_PUSH)stop=true;
@@ -614,23 +718,23 @@ int Progress::handle(int event)
 
 void App::hdr_cb(Fl_Widget *,void *)
 {
-    if(app->HdrWin==NULL){app->HdrWin=new Fl_Window(660,600,"Headers");app->HdrWin->icon(ico);}
-    else {app->HdrWin->show();app->HdrWin->icon(ico);return;}
+    if(app->HdrWin==NULL){app->HdrWin=new Fl_Window(660,600,"Headers");}
+    else {app->HdrWin->show();return;}
+    app->HdrWin->default_icon(ico);
     app->HdrWin->begin();
     {
         headertable=new HeaderTable(20,20,460,440,"Trace Header");
         rt=new ResultTable(20,480,442,22,0);
         vht=new VHeaderTable(500,20,140,560,"Volume Header");
-        new FreeCounterHeader(20,520,160,30,"Trace:");
-        Fl_Menu_Bar *endian_menu=new Fl_Menu_Bar(200,520,200,30);
-        endian_menu->add("big-endian",0,endian_cb,0,FL_MENU_RADIO);
-        endian_menu->add("little-endian",0,endian_cb,0,FL_MENU_RADIO);
-        Fl_Menu_Item *item=(Fl_Menu_Item*)endian_menu->find_item("big-endian");
-        item->set(); //默认为big-endian
+        new FreeCounterHeader(70,520,200,25,"Trace:");
+        app->endian_menu2=new Fl_Menu_Bar(280,520,200,25);
+        app->endian_menu2->add("big-endian",0,app->endian_cb,0,FL_MENU_RADIO);
+        app->endian_menu2->add("little-endian",0,app->endian_cb,0,FL_MENU_RADIO);
+        app->update_endian_menu(app->endian_menu2);
         Fl_Button *export_hdr=new Fl_Button(20,560,100,30,"export value");
-        Fl_Button *load_hdr=new Fl_Button(130,560,100,40,"load from\n&& save");
-        app->input_load_hdr=new Fl_Input(240,555,200,20);
-        Fl_Button *open_but=new Fl_Button(445,555,30,20,"@fileopen");
+        Fl_Button *load_hdr=new Fl_Button(130,555,100,40,"load from\n&& save");
+        app->input_load_hdr=new Fl_Input(240,560,200,30);
+        Fl_Button *open_but=new Fl_Button(445,560,40,30,"@fileopen");
         open_but->callback([](Fl_Widget *,void *)
         {
             Fl_Native_File_Chooser native;
@@ -664,7 +768,7 @@ void App::hdr_cb(Fl_Widget *,void *)
                 for(long long tr=0;tr<app->traces;tr++)
                 {
                     fseeko64(app->fpi,headertable->selected_R-1,1);
-                    if(rt->is_le){p[0]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[3]=fgetc(app->fpi);}
+                    if(app->is_le){p[0]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[3]=fgetc(app->fpi);}
                     else {p[3]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[0]=fgetc(app->fpi);}
                     fprintf(fp,"%d\n",hdrv);
                     fseeko64(app->fpi,241-4-headertable->selected_R+4*app->samples,1);
@@ -675,6 +779,11 @@ void App::hdr_cb(Fl_Widget *,void *)
         });
         load_hdr->callback([](Fl_Widget *,void *)
         {
+            if(0==strcmp(app->input_load_hdr->value(),""))
+            {
+                fl_message("请输入按钮右侧路径喵!");
+                return;
+            }
             app->fc->title("save sgy");
             app->fc->preset_file("output.sgy");
             app->fc->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
@@ -692,10 +801,9 @@ void App::hdr_cb(Fl_Widget *,void *)
                 hdr_loc=headertable->selected_R-1;
                 unsigned char *p=(unsigned char*)&hdrv;
                 unsigned char *buf=(unsigned char*)malloc(240+4*app->samples);
-                
                 fseeko64(app->fpi,3600,0);
                 fwrite(app->hdr,3600,1,fps);
-                if(rt->is_le)
+                if(app->is_le)
                 {
                     for(long long tr=0;tr<app->traces;tr++)
                     {
@@ -726,13 +834,12 @@ void App::hdr_cb(Fl_Widget *,void *)
 
 Cutter::Cutter(int W,int H,const char *title):Fl_Window(W,H,title)
 {
-    icon(ico);
+    default_icon(ico);
     strcpy(outfilename,app->filenames.path_slash);
     strcat(outfilename,app->filenames.base);
     strcpy(outfolder,app->filenames.path_slash);
     strcat(outfilename,"_sc.sgy");
     memcpy(hdr,app->hdr,3600);
-
     tabs=new Fl_Tabs(10,10,480,180);
     CutGroup=new Fl_Group(10,35,480,155,"Cut");
     {
@@ -851,7 +958,6 @@ void Cutter::cut_cb(Fl_Widget *,void *)
     start_trace=atoi(cutter->start_trace_input->value());
     end_trace=atoi(cutter->end_trace_input->value());
     dtrace=atoi(cutter->interval_trace_input->value());
-
     start_sample=atoi(cutter->start_sample_input->value());
     end_sample=atoi(cutter->end_sample_input->value());
     dsample=atoi(cutter->interval_sample_input->value());
@@ -882,8 +988,6 @@ void Cutter::cut_cb(Fl_Widget *,void *)
     {
         fseeko64(app->fpi,dtrace*(240+4*app->samples),1);
         fread(tbuf,1,240,app->fpi);
-        // tbuf[114]=Nsample/256;
-        // tbuf[115]=Nsample%256;
         fwrite(tbuf,1,240,app->fpo);
         fseeko64(app->fpi,start_sample*4,1);
         for(int nt=start_sample;nt<end_sample;nt+=dsample+1)
@@ -909,7 +1013,6 @@ void Cutter::split_cb(Fl_Widget *,void *)
     N=atoi(cutter->n_parts_input->value());
     trs=atoi(cutter->n_traces_input->value());
     trs_end=app->traces%N;
-
     char folder_outfilename[256];
     char input[256];
     strcpy(input,cutter->input_split->value());
@@ -950,7 +1053,7 @@ void Converter::convert_cb(Fl_Widget *,void *)
     {
         float fn=0;
         if(vheader[3224]+vheader[3225]!=1)
-            fl_message("warning1:The file format is:%d,%d\n",vheader[3224],vheader[3225]);
+            fl_message("warning:The file format is:%d,%d\n",vheader[3224],vheader[3225]);
         
         //根据刘磊的规则搞的
         for(i=3200;i<3212;i+=4)
@@ -996,7 +1099,7 @@ void Converter::convert_cb(Fl_Widget *,void *)
     else
     {
         if(vheader[3224]+vheader[3225]!=5)
-            printf("warning:The file format is:%d,%d\n",vheader[3224],vheader[3225]);
+            fl_message("warning:The file format is:%d,%d\n",vheader[3224],vheader[3225]);
         unsigned char *p,*pfn;
         unsigned fn;
         //根据刘磊的规则搞的
@@ -1021,7 +1124,6 @@ void Converter::convert_cb(Fl_Widget *,void *)
                 tc=theader[i+1];theader[i+1]=theader[i+2];theader[i+2]=tc;
             }
             fwrite(theader,1,240,app->fpo);
-            
             fread(buf,1,4*app->samples,app->fpi);
     //这里先获取的振幅再根据振幅转ibm
             for(i=0;i<4*app->samples;i+=4)
@@ -1064,14 +1166,13 @@ void Converter::convert_cb(Fl_Widget *,void *)
 
 Converter::Converter(int W,int H,const char *title):Fl_Window(W,H,title)
 {
-    icon(ico);
+    default_icon(ico);
     notes=new Fl_Box(15,15,W-30,30);
     notes->box(FL_DOWN_BOX);
     notes->label("原始格式取自文件卷头,可在菜单Tools/Headers中查看");
     Fl_Menu_Bar *format_menu=new Fl_Menu_Bar(15,60,220,30);
     format_menu->add("2工作站格式",0,format_cb,0,FL_MENU_RADIO);
     format_menu->add("2微机格式",0,format_cb,0,FL_MENU_RADIO);
-    
     strcpy(outfilename,app->filenames.path_slash);
     strcat(outfilename,app->filenames.base);
     Fl_Menu_Item *item;
@@ -1132,13 +1233,13 @@ void App::endian_cb(Fl_Widget *w,void *)
     const Fl_Menu_Item *item=bar->mvalue();
     if(0==strcmp(item->label(),"big-endian"))
     {
-        rt->is_le=false;
-        rt->redraw();
+        app->is_le=false;
+        if(rt)rt->redraw();
     }
     else //if(0==strcmp(item->label(),"little-endian")
     {
-        rt->is_le=true;
-        rt->redraw();
+        app->is_le=true;
+        if(rt)rt->redraw();
     }
 }
 
@@ -1147,8 +1248,8 @@ void App::enhance_cb(Fl_Widget *,void *)
     app->enhance_cnt++;
     for(int i=0;i<app->trace_s*app->samples;i++)
         app->seis[i]=app->seis[i]<0?-logf(1-app->seis[i]):logf(1+app->seis[i]);
-    fwin->set_window_para(app->seis,app->trace_s,app->samples);
-    fwin->redraw();
+    ims->set_window_para();
+    ims->redraw();
 }
 
 void App::attenua_cb(Fl_Widget *,void *)
@@ -1157,8 +1258,8 @@ void App::attenua_cb(Fl_Widget *,void *)
     app->enhance_cnt--;
     for(int i=0;i<app->trace_s*app->samples;i++)
         app->seis[i]=app->seis[i]<0?1-expf(-app->seis[i]):expf(app->seis[i])-1;
-    fwin->set_window_para(app->seis,app->trace_s,app->samples);
-    fwin->redraw();
+    ims->set_window_para();
+    ims->redraw();
 }
 
 void App::load_clr_cb(Fl_Widget *,void *)
@@ -1178,12 +1279,11 @@ void App::load_clr_cb(Fl_Widget *,void *)
         float *custom_color=(float*)malloc(16*colorbar->c_num);
         for(int i=0;i<colorbar->c_num*4;i++)
             fscanf(fpc,"%f,",&custom_color[i]);
-
         colorbar->set_color_points(find_c_num,custom_color);
         colorbar->sort_colors();
         colorbar->redraw();
         app->ColorbarWin->redraw();
-        fwin->redraw();
+        ims->redraw();
         fclose(fpc);
         free(custom_color);
     }
@@ -1229,13 +1329,11 @@ void App::save_sgy_data_cb(Fl_Widget *,void *)
         default:
         if(NULL==(app->fpo=fl_fopen(native.filename(),"wb")))
             fl_message("路径不存在，请手动创建该路径");
-        
         char asc_out[3200]={32};
         int tb_len=app->hdr_text->buffer()->length();
         unsigned char ebc_out[40][80]={0};
         for(i=0;i<(tb_len>3200?3200:tb_len);i++)
             asc_out[i]=app->tbuff->text()[i];
-
         for(i=0;i<40;i++)
         {
             for(j=0;j<80;j++)
@@ -1258,8 +1356,7 @@ void App::save_sgy_data_cb(Fl_Widget *,void *)
 App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width,Height,title)
 {
     Fl::scheme("gtk+");
-
-    icon(ico);
+    default_icon(ico);
     begin();
     fc=new Fl_Native_File_Chooser();
     fcc=new Fl_Native_File_Chooser();
@@ -1271,30 +1368,31 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     menus->add("Property",0,[](Fl_Widget *,void *)
     {
         if(property==NULL)property=new Property(500,500,"property");
-        else {property->icon(ico);property->show();return;}
+        else {property->show();return;}
     },0,FL_MENU_INACTIVE);
-    menus->add("Tools/Textual Header Editor",0,[](Fl_Widget *,void *){app->TextWin->icon(ico);app->TextWin->show();},0,FL_MENU_INACTIVE);
+    menus->add("Tools/Textual Header Editor",0,[](Fl_Widget *,void *){app->TextWin->show();},0,FL_MENU_INACTIVE);
     menus->add("Tools/Headers",0,hdr_cb,0,FL_MENU_INACTIVE);
     menus->add("Tools/Cutter-Separater",0,[](Fl_Widget *,void *)
     {
         if(cutter==NULL) cutter=new Cutter(500,200,"Cropping");
-        else {cutter->icon(ico);cutter->show();return;}
+        else {cutter->show();return;}
     },0,FL_MENU_INACTIVE);
     menus->add("Tools/Format Converting",0,[](Fl_Widget *,void *)
     {
         if(converter==NULL) converter=new Converter(500,200,"Format Converting");
-        else {converter->icon(ico);converter->show();return;}
+        else {converter->show();return;}
+    },0,FL_MENU_INACTIVE);
+    menus->add("Tools/Map view",0,[](Fl_Widget *,void *)
+    {
+        if(mapview==NULL) mapview=new MapViewWin(500,500,"map view");
+        else {mapview->show();return;}
     },0,FL_MENU_INACTIVE);
     menus->add("Tools/色标",0,[](Fl_Widget *,void *){app->ColorbarWin->show();},0,FL_MENU_DIVIDER);
     menus->add("Tools/图像增强","^q",enhance_cb,0,FL_MENU_INACTIVE);
     menus->add("Tools/图像减弱","^w",attenua_cb,0,FL_MENU_INACTIVE|FL_MENU_DIVIDER);
     menus->add("Tools/Zoomer",0,0,0,FL_MENU_INACTIVE);
     menus->add("Tools/还原",0,0,0,FL_MENU_INACTIVE|FL_MENU_DIVIDER);
-    menus->add("Tools/关于",0,[](Fl_Widget *,void *)
-    {
-        fl_open_uri("https://github.com/draw123draw/Gfimage/");
-    },0,0);
-
+    menus->add("Tools/关于",0,[](Fl_Widget *,void *){fl_open_uri("https://github.com/draw123draw/Gfimage/");},0,0);
     menus->add("data?/ibm-le",0,format_cb,0,FL_MENU_INACTIVE|FL_MENU_RADIO);
     menus->add("data?/ibm-be",0,format_cb,0,FL_MENU_INACTIVE|FL_MENU_RADIO);
     menus->add("data?/ieee-le",0,format_cb,0,FL_MENU_INACTIVE|FL_MENU_RADIO);
@@ -1305,21 +1403,18 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     {
         Fl_Menu_Bar *bar = (Fl_Menu_Bar*)w;
         const Fl_Menu_Item *item=bar->mvalue();
-        fwin->c_norm=item->value()?true:false;
-        fwin->set_window_para(app->seis,app->trace_s,app->samples);
-        fwin->redraw();
+        ims->c_norm=item->value()?true:false;
+        ims->set_window_para();
+        ims->redraw();
     },this,FL_MENU_INACTIVE|FL_MENU_TOGGLE);
-    
-    fwin=new Imagesc(0,height_of_menu,w(),h()-height_of_menu);
+    ims=new Imagesc(0,height_of_menu,w(),h()-height_of_menu);
     open_button=new Fl_Button((Width-open_x)/2,(Height-open_y)/2,open_x,open_y);
-    fwin->hide();
+    ims->hide();
     open_button->label("打开文件\n或将文件拖入窗口");
     open_button->callback(start_cb);
-    resizable(*fwin);
+    resizable(*ims);
     end();
-
     ColorbarWin=new Fl_Window(660,300,"Colorbar");
-    ColorbarWin->icon(ico);
     ColorbarWin->begin();
     {
         const int cheight2=170,cheight3=220;
@@ -1327,12 +1422,13 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
         explaination->box(FL_UP_BOX);
         explaination->align(FL_ALIGN_TOP|FL_ALIGN_LEFT|FL_ALIGN_INSIDE);
         explaination->label("双击色标点以更改颜色,右键以删除\n\n输入数据格式:\n第一行为色标点个数\n第二行开始为0-1之间的4列实数\n第一列为色标值,后三列为r,g,b值\n以逗号隔开");
-        
         Fl_Button *swap_clr=new Fl_Button(50,cheight2,100,30,"reverse");
         Fl_Button *load_clr=new Fl_Button(50,cheight3,100,30,"load colormap");
         load_clr->callback(load_clr_cb);
         Fl_Button *save_clr=new Fl_Button(50,cheight3+40,100,30,"save colormap");
         save_clr->callback(save_clr_cb);
+        chart=new Fl_Chart(30,90,600,70);
+        chart->type(FL_BAR_CHART);
         colormap_c=new Fl_Input_Choice(500,cheight2,100,30,"Colormap:");
         colormap_c->add("gray");
         colormap_c->add("rainbow");
@@ -1361,11 +1457,8 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
             }
             for(i=0;i<colorbar->c_num;i++)colors[i]->redraw();
             colorbar->redraw();
-            fwin->redraw();
+            ims->redraw();
         });
-        chart=new Fl_Chart(30,90,600,70);
-        chart->type(FL_BAR_CHART);
-        chart->hide();
     }
     ColorbarWin->redraw();
     ColorbarWin->end();
@@ -1379,12 +1472,15 @@ App::~App()
 
 void App::close_them(bool all)
 {
+    ims->isvalid=false;
+    sctr->isvalid=false;
     delete cutter;cutter=NULL;
     delete converter;converter=NULL;
     delete CroppingWin;CroppingWin=NULL;
     delete TextWin;TextWin=NULL;
     delete HdrWin;HdrWin=NULL;
     delete property;property=NULL;
+    delete rt;rt=NULL;
     if(all)
     {
         fclose(fpi);
@@ -1395,21 +1491,9 @@ void App::close_them(bool all)
 
 int App::handle(int event)
 {
-    int px,py;
     int ret=Fl_Window::handle(event);
-    px=trace_s*Fl::event_x()/w();
-    py=samples*(Fl::event_y()-30)/h();
     switch(event)
     {
-        case FL_MOVE:
-        if(!first_read&&Fl::belowmouse()==fwin)
-        {
-            sprintf(mxy,"X:%d\tY:%d",px,py);
-            where_mouse_box->copy_label(mxy);
-            sprintf(amp_c,"%g",seis[px*samples+py]);
-            tooltip(amp_c);
-        }
-        break;
         case FL_DND_ENTER:
         case FL_DND_DRAG:
         case FL_DND_RELEASE:ret=1;break;
@@ -1422,9 +1506,9 @@ int App::handle(int event)
 
 void App::open_figure()
 {
-    fwin->set_window_para(seis,trace_s,samples);
-    fwin->redraw();
-    fwin->show();
+    ims->set_window_para();
+    ims->redraw();
+    ims->show();
     for(int cnt=0;cnt<enhance_cnt;cnt++)
         for(int i=0;i<trace_s*samples;i++)
             seis[i]=seis[i]<0?-logf(1-seis[i]):logf(1+seis[i]);
@@ -1433,8 +1517,8 @@ void App::open_figure()
         begin();
         where_mouse_box=new Fl_Box(w()-250,0,100,height_of_menu);
         end();
-        //ebcdic
-        TextWin=new Fl_Window(740,820,"Header Text");
+        TextWin=new Fl_Window(740,820,"Header Text");//ebcdic
+        TextWin->default_icon(ico);
         TextWin->begin();
         {
             hdr_text=new Fl_Text_Editor(10,10,720,720);
@@ -1467,6 +1551,7 @@ void App::open_figure()
         }
         item=(Fl_Menu_Item*)menus->find_item("Tools/图像增强");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Tools/图像减弱");item->flags=0;
+        item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Tools/Format Converting");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Property");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("data?/ibm-le");item->flags=FL_MENU_RADIO;
@@ -1476,7 +1561,6 @@ void App::open_figure()
         item=(Fl_Menu_Item*)menus->find_item("data?/int32-le");item->flags=FL_MENU_RADIO;
         item=(Fl_Menu_Item*)menus->find_item("data?/int32-be");item->flags=FL_MENU_RADIO|FL_MENU_DIVIDER;
         item=(Fl_Menu_Item*)menus->find_item("data?/zero-centered");item->flags=FL_MENU_TOGGLE;item->set();
-
         switch(fmk)
         {
             case 0:
@@ -1500,12 +1584,12 @@ void App::open_figure()
         }
         first_read=false;
     }
-    chart->show();
     histo=(int*)calloc(nbin,4);//nbin==直方图区间个数
-    if(fwin->max_a-fwin->min_a>FLT_MAX)return;
+    if(ims->max_a-ims->min_a>FLT_MAX)return;
     for(int i=0;i<trace_s*samples;i++)
     {
-        int bin=fwin->c_norm?(int)(nbin*0.5*(seis[i]/(fwin->max_abs_a+FLT_MIN)+1)):(int)(nbin*(seis[i]-fwin->min_a)/(fwin->max_a-fwin->min_a+FLT_MIN));
+        int bin=ims->c_norm?(int)(nbin*0.5*(seis[i]/(ims->max_abs_a+FLT_MIN)+1)):
+        (int)(nbin*(seis[i]-ims->min_a)/(ims->max_a-ims->min_a+FLT_MIN));
         if(bin==nbin)bin--;
         histo[bin]++;
     }
@@ -1538,17 +1622,18 @@ void App::read_data(const char *fname,bool utf_flag)
     sprintf(ld4_c,"%lld",l/4);
     fseeko64(fpi,0,0);
     fread(hdr,1,3600,fpi);
-    fprintf(stderr,"%d,%d\n",hdr[3224],hdr[3225]);
+    // fprintf(stderr,"%d,%d\n",hdr[3224],hdr[3225]);
     fseeko64(fpi,0,0);
     fmt=hdr[3224]+hdr[3225];
     if(fmt!=1&&fmt!=5&&fmt!=2)
-    {
+    {//二进制文件
         is_bin=true;
         if(property)
         {
             close_them();
-            Fl_Menu_Item *item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");
-            item->flags=FL_MENU_INACTIVE;
+            Fl_Menu_Item *item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=FL_MENU_INACTIVE;
+            item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=FL_MENU_INACTIVE;
+            item=(Fl_Menu_Item*)menus->find_item("Tools/Textual Header Editor");item->flags=FL_MENU_INACTIVE;
         }
         binpara=new BinPara(400,200,"二进制参数");
         while(binpara->shown())Fl::wait();
@@ -1566,7 +1651,7 @@ void App::read_data(const char *fname,bool utf_flag)
         else if(fmt==2&&hdr[3225]==0)fmk=4;
         else if(fmt==2&&hdr[3224]==0)fmk=5;
         fseeko64(fpi,3600,0);
-    }
+    }//此处已经确定好traces和samples数量
     trace_s=(traces<w())?traces:w();
     sprintf(traces_c,"%lld",traces);
     sprintf(samples_c,"%d",samples);
@@ -1579,7 +1664,6 @@ void App::read_data(const char *fname,bool utf_flag)
     }
     format_correct(seis,trace_s*samples);
     detect_nan();
-    
     trace_num=0;
     open_figure();
     strcpy(filename,fname);
@@ -1645,7 +1729,7 @@ void App::ieee2ibm(float *seis_b,int length)//公式已经考虑了字节序，�
 BinPara::BinPara(int W,int H,const char* title):Fl_Window(W,H,title)
 {
     begin();
-    icon(ico);
+    default_icon(ico);
     guess=new Fl_Button(300,10,80,30,"猜测");
     guess->tooltip("开发中>_<敬请期待");
     ok=new Fl_Button(300,50,80,30,"ok");
@@ -1882,12 +1966,47 @@ int ResultTable::b2i(int C)
     tbytes[1]=headertable->hdrbytes_s[C*240+headertable->selected_R];
     tbytes[2]=headertable->hdrbytes_s[C*240+headertable->selected_R+1];
     tbytes[3]=headertable->hdrbytes_s[C*240+headertable->selected_R+2];
-    if(!is_le)
+    if(!app->is_le)
     {
         tmp_b=tbytes[0];tbytes[0]=tbytes[3];tbytes[3]=tmp_b;
         tmp_b=tbytes[1];tbytes[1]=tbytes[2];tbytes[2]=tmp_b;
     }
     return tnum;
+}
+
+MapViewWin::MapViewWin(int W,int H,const char *title):Fl_Window(W,H,title)
+{
+    default_icon(ico);
+    text=new Fl_Box(0,0,500,30,"请输入对应信息所在道头的起始位置,可在Header工具中查询");
+    valueX=new Fl_Int_Input(30,30,40,25,"X:");
+    valueY=new Fl_Int_Input(30,60,40,25,"Y:");
+    ok=new Fl_Button(80,30,50,25,"确认");
+    app->endian_menu1=new Fl_Menu_Bar(80,60,200,25);
+    app->endian_menu1->add("big-endian",0,app->endian_cb,0,FL_MENU_RADIO);
+    app->endian_menu1->add("little-endian",0,app->endian_cb,0,FL_MENU_RADIO);
+    app->update_endian_menu(app->endian_menu1);
+    sctr=new Scatter(10,90,480,400);
+    ok->callback([](Fl_Widget *,void *)
+    {
+        int Xbyte,Ybyte;
+        sctr->xmax=sctr->ymax=0;
+        sctr->xmin=sctr->ymin=INT_MAX;
+        Xbyte=atoi(mapview->valueX->value());
+        Ybyte=atoi(mapview->valueY->value());
+        fseeko64(app->fpi,3600,0);
+        sctr->ret_flag=false;
+        if(Xbyte>Ybyte)sctr->findmvalues(Ybyte,Xbyte,sctr->ymax,sctr->ymin,sctr->ys,sctr->xmax,sctr->xmin,sctr->xs);
+        else sctr->findmvalues(Xbyte,Ybyte,sctr->xmax,sctr->xmin,sctr->xs,sctr->ymax,sctr->ymin,sctr->ys);
+        if(sctr->ret_flag)return;
+        sprintf(sctr->ax_buf[0],"%d",sctr->ymax);
+        sprintf(sctr->ax_buf[1],"%d",sctr->ymin);
+        sprintf(sctr->ax_buf[2],"%d",sctr->xmin);
+        sprintf(sctr->ax_buf[3],"%d",sctr->xmax);
+        sctr->redraw();
+        sctr->isvalid=true;
+    });
+    end();
+    show();
 }
 
 int main(int argc,char **argv)
@@ -1919,7 +2038,6 @@ void findnames(char* filename,manynames* outfile)
     }
     else
         strcpy(outfile->basename,filename);
-    
     i=strlen(outfile->basename)-1;
     while(i>=0&&outfile->basename[i]!='.')i--;
     if(i>=0)
