@@ -4,6 +4,7 @@
 #include<FL/Fl_Window.H>
 #include<FL/Fl_Gl_Window.H>
 #include<GL/gl.h>
+#include<FL/gl.h>
 
 #include<FL/Fl_Box.H>
 #include<FL/Fl_Button.H>
@@ -33,7 +34,7 @@
 #define ftello64 _ftelli64
 #endif
 
-Fl_RGB_Image *ico=new Fl_RGB_Image(idata,32,32,3,0);
+Fl_RGB_Image* ico = new Fl_RGB_Image(idata, 32, 32, 4, 0);
 struct manynames
 {
 	char basename[128];
@@ -45,6 +46,8 @@ struct manynames
 class ColorBar;
 class ColorPoint;
 class Imagesc;
+class Scatter;
+class Scoordinate;
 class FreeCounter;
 class FreeCounterHeader;
 class Property;
@@ -54,6 +57,7 @@ class App;
 class BinPara;
 class HeaderTable;
 class VHeaderTable;
+class MapViewWin;
 
 class ColorPoint:public Fl_Box
 {
@@ -66,7 +70,7 @@ public:
 class ColorBar:public Fl_Gl_Window//在Colorbar窗口中
 {
 public:
-    int cbox_s=5,cbox_height=35;
+    const int cbox_s=5,cbox_height=35;
     float *fs;
     int c_num=0;
     ColorBar(int x,int y,int w,int h);
@@ -86,19 +90,30 @@ public:
     float *mat;
     float max_a,min_a,max_abs_a=0;
     float max_s,min_s,max_abs_s=0;
-    bool set_mat=false,c_norm=true;
-    int rows,cols;
+    bool c_norm=true,isvalid=false;
     void draw()override;
     Imagesc(int x,int y,int width,int height);
-    void set_window_para(float *mat_f,int rows_f,int cols_f);
+    void set_window_para();
     int handle(int event)override;
+};
+
+class Scatter:public Fl_Gl_Window
+{
+public:
+    bool isvalid=false,ret_flag;
+    char ax_buf[4][20];
+    int *xs,*ys;
+    int xmax,xmin,ymax,ymin,v;
+    void draw()override;
+    Scatter(int x,int y,int width,int height);
+    ~Scatter();
+    void findmvalues(int byte1,int byte2,int &max1,int &min1,int *arr1,int &max2,int &min2,int *arr2);
 };
 
 class FreeCounter:public Fl_Counter
 {
     static void tc_cb(Fl_Widget *w,void *data);
     static void tc_cb_bin(Fl_Widget *w,void *data);
-    static void ok_cb(Fl_Widget *w,void *data);
 public:
     int step_s,step_l;
     Fl_Window *counter_set;
@@ -116,7 +131,6 @@ public:
     Fl_Box *text_box;
     Fl_Box *global_box;
     Fl_Button *global_but;
-    bool stop;
     char property_text[512],global_text[512];
     Property(int W,int H,const char *title);
 };
@@ -125,7 +139,7 @@ class Progress:public Fl_Progress
 {
 public:
     Progress(int X,int Y,int W,int H);
-    bool stop=false;
+    bool stop;
     int handle(int event)override;
 };
 
@@ -174,12 +188,9 @@ public:
 class App:public Fl_Window
 {
     int open_x=120,open_y=50;//打开文件按钮
-    char mxy[64],amp_c[64];
-    bool first_read=true;
     Fl_Text_Editor *hdr_text;
     Fl_Text_Buffer *tbuff;
     Fl_Button *open_button;
-
     Fl_Window *CroppingWin=NULL,*TextWin=NULL,*HdrWin=NULL,*ColorbarWin=NULL;
     Fl_Native_File_Chooser *fc,*fcc,*fcd;
     Fl_Input_Choice *colormap_c;
@@ -188,15 +199,17 @@ class App:public Fl_Window
     static void ts_cb_bin(Fl_Widget *widget,void *);
     static void hdr_cb(Fl_Widget *widget,void *);
     static void format_cb(Fl_Widget *widget,void *);
-    static void endian_cb(Fl_Widget *widget,void *);
     static void enhance_cb(Fl_Widget *widget,void *);
     static void attenua_cb(Fl_Widget *widget,void *);
     static void load_clr_cb(Fl_Widget *widget,void *);
     static void save_clr_cb(Fl_Widget *widget,void *);
     static void save_sgy_data_cb(Fl_Widget *w,void *);
 public:
-    Fl_Menu_Bar *menus;
-    bool is_bin=false;
+    char mxy[64],amp_c[64];
+    bool first_read=true;
+    static void endian_cb(Fl_Widget *widget,void *);
+    Fl_Menu_Bar *menus,*endian_menu1,*endian_menu2;
+    bool is_bin=false,is_le=false;
     char filename[256],traces_c[32],samples_c[32],ld4_c[64];
     char fmt,fmk;
     unsigned char hdr[3600];
@@ -208,7 +221,6 @@ public:
     int trace_s,samples,enhance_cnt=0;
     float *seis=NULL;
     long long trace_num=0;
-
     int height_of_menu=30;
     Fl_Chart *chart=NULL;
     const int nbin=60;
@@ -216,12 +228,12 @@ public:
     Fl_Input *input_load_hdr;
     Fl_Hor_Slider *trace_slider;
     FreeCounter *trace_counter;
-
     App(int X,int Y,int Width,int Height,const char *title);
     ~App();
     void close_them(bool all=false);
     int handle(int event)override;
     void swap_bytes(float *seis_b,int length);
+    void update_endian_menu(Fl_Menu_Bar *endian_menu);
     void detect_nan();
     void open_figure();
     void change_profile();
@@ -270,7 +282,16 @@ class ResultTable:public Fl_Table
 public:
     ResultTable(int X,int Y,int W,int H,const char *title);
     int b2i(int COL);
-    bool is_le=false;
+};
+
+class MapViewWin:public Fl_Window
+{
+    Fl_Box *text;
+    Fl_Button *ok;
+    Fl_Int_Input *valueX;
+    Fl_Int_Input *valueY;
+public:
+    MapViewWin(int W,int H,const char *title);
 };
 
 App *app;
@@ -278,7 +299,8 @@ BinPara *binpara;
 ColorPoint **colors=NULL;
 ColorPoint *tmp_c=NULL;
 ColorBar *colorbar=NULL;
-Imagesc *fwin=NULL;
+Imagesc *ims=NULL;
+Scatter *sctr=NULL;
 Property *property=NULL;
 Progress *progress=NULL;
 Cutter *cutter=NULL;
@@ -286,6 +308,7 @@ Converter *converter=NULL;
 HeaderTable *headertable=NULL;
 VHeaderTable *vht=NULL;
 ResultTable *rt=NULL;
+MapViewWin *mapview=NULL;
 void findnames(char* filename,manynames* outfile);
 
 #endif
