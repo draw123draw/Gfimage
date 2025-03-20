@@ -163,7 +163,7 @@ public:
     Fl_Button *cut_but,*split_but;
     Fl_Button *open_file_cut,*open_file_split;
     Fl_Tabs *tabs;
-    Fl_Group *CutGroup,*Split_Group;
+    Fl_Group *CutGroup,*SplitGroup;
     Fl_Input *input_cut,*input_split;
     Fl_Int_Input *n_parts_input,*n_traces_input;
     Fl_Int_Input *start_trace_input,*end_trace_input,*interval_trace_input;
@@ -174,14 +174,19 @@ public:
 class Converter:public Fl_Window
 {
     static void format_cb(Fl_Widget *,void *);
+    static void bformat_cb(Fl_Widget *,void *);
     static void convert_cb(Fl_Widget *,void *);
+    static void bconvert_cb(Fl_Widget *,void *);
 public:
     bool sun2pc;
     char outfilename[256];
-    Fl_Button *ok;
+    char bformat=1;//0=npy,1=ieee-le
+    Fl_Tabs *tabs;
+    Fl_Group *fgroup,*bgroup;
+    Fl_Button *convert_ok,*bconvert_ok;
     Fl_Box *notes;
-    Fl_Input *input;
-    Fl_Button *open_file;
+    Fl_Input *input,*binput;
+    Fl_Button *open_file_format,*open_file_bformat;
     Converter(int W,int H,const char *title);
 };
 
@@ -191,7 +196,7 @@ class App:public Fl_Window
     Fl_Text_Editor *hdr_text;
     Fl_Text_Buffer *tbuff;
     Fl_Button *open_button;
-    Fl_Window *CroppingWin=NULL,*TextWin=NULL,*HdrWin=NULL,*ColorbarWin=NULL;
+    Fl_Window *TextWin=NULL,*HdrWin=NULL,*CroppingWin=NULL,*ColorbarWin=NULL;
     Fl_Native_File_Chooser *fc,*fcc,*fcd;
     Fl_Input_Choice *colormap_c;
     static void start_cb(Fl_Widget* widget,void *);
@@ -221,12 +226,12 @@ public:
     int trace_s,samples,enhance_cnt=0;
     float *seis=NULL;
     long long trace_num=0;
-    int height_of_menu=30;
+    const int height_of_menu=30,height_of_scroll=20;
     Fl_Chart *chart=NULL;
     const int nbin=60;
-    Fl_Box *where_mouse_box=NULL;
+    Fl_Box *where_mouse_box=NULL,*nan_box=NULL;
     Fl_Input *input_load_hdr;
-    Fl_Hor_Slider *trace_slider;
+    Fl_Scrollbar *trace_slider;
     FreeCounter *trace_counter;
     App(int X,int Y,int Width,int Height,const char *title);
     ~App();
