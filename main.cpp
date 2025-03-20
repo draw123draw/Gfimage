@@ -1665,11 +1665,6 @@ void App::read_data(const char *fname,bool utf_flag)
         fl_alert("文件不存在!输入的路径为:%s\n可尝试在主窗口中打开",fname);
         return;
     }
-    if(seis!=NULL)
-    {
-        free(seis);
-        seis=NULL;
-    }
     fseeko64(fpi,0,SEEK_END);
     l=ftello64(fpi);
     if(l%4!=0)
