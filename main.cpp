@@ -209,6 +209,7 @@ Imagesc::Imagesc(int x,int y,int width,int height):Fl_Gl_Window(x,y,width,height
 void Imagesc::draw()
 {
     int i,j;
+    glViewport(0,0,w(),h());//以后要把这句话加在窗口resize的回调函数里面
     if(!isvalid)
     {
         glLoadIdentity();//重置
@@ -305,7 +306,6 @@ int Imagesc::handle(int event)
         case FL_DND_DRAG:
         case FL_DND_RELEASE:ret=1;break;
         case FL_PASTE:
-        app->close_them();
         app->read_data(Fl::event_text());
     }
     return ret;
@@ -877,7 +877,7 @@ Cutter::Cutter(int W,int H,const char *title):Fl_Window(W,H,title)
         cut_but->callback(cut_cb);
     }
     CutGroup->end();
-    Split_Group=new Fl_Group(10,35,480,155,"Split");
+    SplitGroup=new Fl_Group(10,35,480,155,"Split");
     {
         input_split=new Fl_Input(80,160,250,25,"输出路径:");
         input_split->value(outfolder);
@@ -936,7 +936,7 @@ Cutter::Cutter(int W,int H,const char *title):Fl_Window(W,H,title)
         });
         split_but->callback(split_cb);
     }
-    Split_Group->end();
+    SplitGroup->end();
     tabs->end();
     show();
 }
@@ -946,9 +946,27 @@ void Converter::format_cb(Fl_Widget *w,void *)
     Fl_Menu_Bar *bar=(Fl_Menu_Bar*)w;
     const Fl_Menu_Item *item=bar->mvalue();
     if(0==strcmp(item->label(),"2工作站格式"))
+    {
         converter->sun2pc=false;
+        sprintf(converter->outfilename,"%s%s_sun.sgy",app->filenames.path_slash,app->filenames.base);
+        converter->input->value(converter->outfilename);
+    }
     else //if(0==strcmp(item->label(),"little-endian")
+    {
         converter->sun2pc=true;
+        sprintf(converter->outfilename,"%s%s_pc.sgy",app->filenames.path_slash,app->filenames.base);
+        converter->input->value(converter->outfilename);
+    }
+}
+
+void Converter::bformat_cb(Fl_Widget *w,void *)
+{
+    Fl_Menu_Bar *bar=(Fl_Menu_Bar*)w;
+    const Fl_Menu_Item *item=bar->mvalue();
+    if(0==strcmp(item->label(),"npy"))
+        converter->bformat=0;
+    else if(0==strcmp(item->label(),"开发中1"))
+        converter->bformat=1;
 }
 
 void Cutter::cut_cb(Fl_Widget *,void *)
@@ -963,12 +981,12 @@ void Cutter::cut_cb(Fl_Widget *,void *)
     dsample=atoi(cutter->interval_sample_input->value());
     if(start_trace<=0||end_trace>app->traces||start_trace>end_trace||start_sample<=0||end_sample>app->samples||start_sample>end_sample)
     {
-        fl_message("输入参数有误");
+        fl_message("输入参数有误,道数应该在1到%lld之间,采样点数应该在1到%d之间",app->traces,app->samples);
         return;
     }
     start_trace--;start_sample--;
     if(NULL==(app->fpo=fl_fopen(cutter->input_cut->value(),"wb")))
-        fl_message("路径不存在，请手动创建该路径");
+        fl_message("路径不存在,请手动创建该路径");
     Nsample=(end_sample-start_sample)/(dsample+1.0);
     if(cutter->hdr[3224]==0)
     {
@@ -1164,51 +1182,87 @@ void Converter::convert_cb(Fl_Widget *,void *)
     fclose(app->fpo);
 }
 
+void Converter::bconvert_cb(Fl_Widget *,void *)
+{
+    if(NULL==(app->fpo=fl_fopen(converter->input->value(),"wb")))
+        fl_message("路径不存在，请手动创建该路径");
+    fclose(app->fpo);
+}
+
 Converter::Converter(int W,int H,const char *title):Fl_Window(W,H,title)
 {
     default_icon(ico);
-    notes=new Fl_Box(15,15,W-30,30);
-    notes->box(FL_DOWN_BOX);
-    notes->label("原始格式取自文件卷头,可在菜单Tools/Headers中查看");
-    Fl_Menu_Bar *format_menu=new Fl_Menu_Bar(15,60,220,30);
-    format_menu->add("2工作站格式",0,format_cb,0,FL_MENU_RADIO);
-    format_menu->add("2微机格式",0,format_cb,0,FL_MENU_RADIO);
-    strcpy(outfilename,app->filenames.path_slash);
-    strcat(outfilename,app->filenames.base);
-    Fl_Menu_Item *item;
-    if(app->hdr[3224]+app->hdr[3225]==5)
+    tabs=new Fl_Tabs(10,10,480,180);
+    fgroup=new Fl_Group(10,35,480,165,"pc&&sun");
     {
-        item=(Fl_Menu_Item*)format_menu->find_item("2工作站格式");
-        item->set();
-        sun2pc=false;
-        strcat(outfilename,"_sun.sgy");
-    }
-    else
-    {
-        item=(Fl_Menu_Item*)format_menu->find_item("2微机格式");
-        item->set();
-        sun2pc=true;
-        strcat(outfilename,"_pc.sgy");
-    }
-    input=new Fl_Input(80,100,320,25,"输出路径:");
-    input->value(outfilename);
-    open_file=new Fl_Button(400,100,40,25,"@fileopen");
-    open_file->callback([](Fl_Widget *,void *)
-    {
-        Fl_Native_File_Chooser native;
-        native.title("输出文件");
-        native.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
-        native.filter("SEGY\t*.*");
-        switch(native.show())
+        notes=new Fl_Box(25,45,W-50,30);
+        notes->box(FL_DOWN_BOX);
+        notes->label("原始格式取自文件卷头,可在菜单Tools/Headers中查看");
+        Fl_Menu_Bar *format_menu=new Fl_Menu_Bar(25,85,220,30);
+        format_menu->add("2工作站格式",0,format_cb,0,FL_MENU_RADIO);
+        format_menu->add("2微机格式",0,format_cb,0,FL_MENU_RADIO);
+        input=new Fl_Input(90,125,320,25,"输出路径:");
+        Fl_Menu_Item *item;
+        if(app->hdr[3224]+app->hdr[3225]==5)
         {
-            case -1:break;
-            case 1:fl_beep();break;
-            default:
-                converter->input->value(native.filename());
+            item=(Fl_Menu_Item*)format_menu->find_item("2工作站格式");
+            sun2pc=false;
+            item->set();
+            sprintf(outfilename,"%s%s_sun.sgy",app->filenames.path_slash,app->filenames.base);
+            input->value(outfilename);
         }
-    });
-    ok=new Fl_Button(W-115,H-45,100,25,"Convert!");
-    ok->callback(convert_cb);
+        else
+        {
+            item=(Fl_Menu_Item*)format_menu->find_item("2微机格式");
+            sun2pc=true;
+            item->set();
+            sprintf(outfilename,"%s%s_pc.sgy",app->filenames.path_slash,app->filenames.base);
+            input->value(outfilename);
+        }
+        open_file_format=new Fl_Button(410,125,40,25,"@fileopen");
+        open_file_format->callback([](Fl_Widget *,void *)
+        {
+            Fl_Native_File_Chooser native;
+            native.title("输出文件");
+            native.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
+            native.filter("SEGY\t*.*");
+            switch(native.show())
+            {
+                case -1:break;
+                case 1:fl_beep();break;
+                default:
+                    converter->input->value(native.filename());
+            }
+        });
+        convert_ok=new Fl_Button(W-115,H-40,100,25,"Convert!");
+        convert_ok->callback(convert_cb);
+    }
+    fgroup->end();
+    bgroup=new Fl_Group(10,35,480,165,"2binary");
+    {
+        Fl_Menu_Bar *format_menu=new Fl_Menu_Bar(25,85,220,30);
+        format_menu->add("npy",0,bformat_cb,0,FL_MENU_RADIO);
+        format_menu->add("开发中1",0,bformat_cb,0,FL_MENU_RADIO);
+        binput=new Fl_Input(90,125,320,25,"输出路径:");
+        open_file_bformat=new Fl_Button(410,125,40,25,"@fileopen");
+        open_file_bformat->callback([](Fl_Widget *,void *)
+        {
+            Fl_Native_File_Chooser native;
+            native.title("输出文件");
+            native.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
+            native.filter("npy\t*.{npy}");
+            switch(native.show())
+            {
+                case -1:break;
+                case 1:fl_beep();break;
+                default:
+                    converter->binput->value(native.filename());
+            }
+        });
+        bconvert_ok=new Fl_Button(W-115,H-40,100,25,"Convert!");
+        bconvert_ok->callback(bconvert_cb);
+        // binput->value();
+    }
     show();
 }
 
@@ -1410,6 +1464,12 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     ims=new Imagesc(0,height_of_menu,w(),h()-height_of_menu);
     open_button=new Fl_Button((Width-open_x)/2,(Height-open_y)/2,open_x,open_y);
     ims->hide();
+    nan_box=new Fl_Box(w()-275,0,25,height_of_menu,"!");
+    nan_box->box(FL_NO_BOX);
+    nan_box->labelcolor(FL_RED);
+    nan_box->tooltip("数据中有nan值,已赋值为0");
+    nan_box->labelfont(FL_TIMES_BOLD);
+    nan_box->hide();
     open_button->label("打开文件\n或将文件拖入窗口");
     open_button->callback(start_cb);
     resizable(*ims);
@@ -1468,12 +1528,14 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
 App::~App()
 {
     close_them(true);
+    free(seis);
+    free(histo);
 }
 
 void App::close_them(bool all)
 {
     ims->isvalid=false;
-    sctr->isvalid=false;
+    delete sctr;sctr=NULL;
     delete cutter;cutter=NULL;
     delete converter;converter=NULL;
     delete CroppingWin;CroppingWin=NULL;
@@ -1482,11 +1544,7 @@ void App::close_them(bool all)
     delete property;property=NULL;
     delete rt;rt=NULL;
     if(all)
-    {
         fclose(fpi);
-        free(seis);
-        free(histo);
-    }
 }
 
 int App::handle(int event)
@@ -1548,10 +1606,10 @@ void App::open_figure()
         {
             item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=0;
             item=(Fl_Menu_Item*)menus->find_item("Tools/Textual Header Editor");item->flags=0;
+            item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=0;
         }
         item=(Fl_Menu_Item*)menus->find_item("Tools/图像增强");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Tools/图像减弱");item->flags=0;
-        item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Tools/Format Converting");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("Property");item->flags=0;
         item=(Fl_Menu_Item*)menus->find_item("data?/ibm-le");item->flags=FL_MENU_RADIO;
@@ -1584,7 +1642,7 @@ void App::open_figure()
         }
         first_read=false;
     }
-    histo=(int*)calloc(nbin,4);//nbin==直方图区间个数
+    histo=(int*)realloc(histo,nbin*4);//nbin==直方图区间个数
     if(ims->max_a-ims->min_a>FLT_MAX)return;
     for(int i=0;i<trace_s*samples;i++)
     {
@@ -1599,12 +1657,12 @@ void App::open_figure()
 void App::read_data(const char *fname,bool utf_flag)
 {
     int i;
-    if(!first_read)fclose(fpi);
+    if(!first_read)app->close_them(true);
     if(utf_flag)fpi=fl_fopen(fname,"rb");
 	else fpi=fopen(fname,"rb");
     if(fpi==NULL)
     {
-        fl_alert("文件不存在！输入的路径为:%s\n可尝试在主窗口中打开",fname);
+        fl_alert("文件不存在!输入的路径为:%s\n可尝试在主窗口中打开",fname);
         return;
     }
     if(seis!=NULL)
@@ -1616,9 +1674,10 @@ void App::read_data(const char *fname,bool utf_flag)
     l=ftello64(fpi);
     if(l%4!=0)
     {
-        fl_alert("似乎不对哉,文件大小为%llu,不是4的倍数呀!",l);
+        fl_alert("文件错误,文件大小为%llu,不是4的倍数!",l);
         return;
     }
+    
     sprintf(ld4_c,"%lld",l/4);
     fseeko64(fpi,0,0);
     fread(hdr,1,3600,fpi);
@@ -1628,13 +1687,9 @@ void App::read_data(const char *fname,bool utf_flag)
     if(fmt!=1&&fmt!=5&&fmt!=2)
     {//二进制文件
         is_bin=true;
-        if(property)
-        {
-            close_them();
-            Fl_Menu_Item *item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=FL_MENU_INACTIVE;
-            item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=FL_MENU_INACTIVE;
-            item=(Fl_Menu_Item*)menus->find_item("Tools/Textual Header Editor");item->flags=FL_MENU_INACTIVE;
-        }
+        Fl_Menu_Item *item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=FL_MENU_INACTIVE;
+        item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=FL_MENU_INACTIVE;
+        item=(Fl_Menu_Item*)menus->find_item("Tools/Textual Header Editor");item->flags=FL_MENU_INACTIVE;
         binpara=new BinPara(400,200,"二进制参数");
         while(binpara->shown())Fl::wait();
         if(!binpara->pass)return;
@@ -1656,7 +1711,7 @@ void App::read_data(const char *fname,bool utf_flag)
     sprintf(traces_c,"%lld",traces);
     sprintf(samples_c,"%d",samples);
     fprintf(stderr,"%lld,%d\n",traces,samples);
-    seis=(float*)malloc(sizeof(float)*trace_s*samples);
+    seis=(float*)realloc(seis,sizeof(float)*trace_s*samples);
     for(i=0;i<trace_s;i++)
     {
         if(!is_bin)fseeko64(fpi,240,1);
@@ -1669,16 +1724,17 @@ void App::read_data(const char *fname,bool utf_flag)
     strcpy(filename,fname);
     label(fname);
     findnames(app->filename,&(app->filenames));
-    if(traces>w()) //文件太大则制作slider
+    if(traces>w()) //文件太大则制作滚动条
     {
+        ims->size(w(),h()-height_of_scroll-height_of_menu);
         begin();
-        trace_slider=new Fl_Hor_Slider(w()-150,0,150,height_of_menu/2);
-        trace_counter=new FreeCounter(w()-150,height_of_menu/2,150,height_of_menu/2);
+        trace_slider=new Fl_Scrollbar(0,h()-height_of_scroll,w(),height_of_scroll,"a scroll");
+        trace_counter=new FreeCounter(w()-150,0,150,height_of_menu);
         trace_counter->value(1);
         end();
         trace_slider->align(FL_ALIGN_LEFT);
         trace_slider->bounds(1,traces-trace_s+1);
-        trace_slider->type(1);
+        trace_slider->type(FL_HORIZONTAL);
         trace_slider->step(1);
         trace_slider->value(1);
         if(is_bin) trace_slider->callback(ts_cb_bin,this);
@@ -1699,14 +1755,14 @@ void App::detect_nan()
     {
         if(isnan(seis[i])||isinf(seis[i]))
         {
-            if(!nan_flag)
-            {
-                fl_message("检测到有Nan值,将转换为0");
-                nan_flag=true;
-            }
+            nan_flag=true;
             seis[i]=0;
         }
     }
+    if(nan_flag)
+        nan_box->show();
+    else
+        nan_box->hide();
 }
 
 void App::ieee2ibm(float *seis_b,int length)//公式已经考虑了字节序，无需再用swap_bytes转换
@@ -2011,7 +2067,7 @@ MapViewWin::MapViewWin(int W,int H,const char *title):Fl_Window(W,H,title)
 
 int main(int argc,char **argv)
 {
-    app=new App(100,100,600,900,"Open a segy file");
+    app=new App(100,100,600,600,"Open a segy file");
     app->show(1,argv);
     if(argc>1)
         app->read_data(argv[1],false);
