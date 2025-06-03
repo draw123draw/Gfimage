@@ -9,9 +9,11 @@
 #include<FL/Fl_Box.H>
 #include<FL/Fl_Button.H>
 #include<FL/Fl_Input.H>
+#include<FL/Fl_Output.H>
 #include<FL/Fl_Menu_Bar.H>
-#include<FL/Fl_Hor_Slider.H>
+#include<FL/Fl_Scrollbar.H>
 #include<FL/Fl_Counter.H>
+#include<FL/Fl_Spinner.H>
 #include<FL/Fl_Int_Input.H>
 #include<FL/Fl_Text_Editor.H>
 #include<FL/Fl_Input_Choice.H>
@@ -27,6 +29,7 @@
 #include<FL/fl_draw.H>
 #include<math.h>
 #include<float.h>
+#include<fftw3.h>
 #include"defs.h"
 
 #ifdef _WIN32
@@ -46,6 +49,7 @@ struct manynames
 class ColorBar;
 class ColorPoint;
 class Imagesc;
+class FkWin;
 class Scatter;
 class Scoordinate;
 class FreeCounter;
@@ -87,14 +91,28 @@ public:
 class Imagesc:public Fl_Gl_Window
 {
 public:
-    float *mat;
-    float max_a,min_a,max_abs_a=0;
-    float max_s,min_s,max_abs_s=0;
+    float max_a=FLT_MIN,min_a=FLT_MAX,max_abs_a=0;
+    float max_s=FLT_MIN,min_s=FLT_MAX,max_abs_s=0;
     bool c_norm=true,isvalid=false;
     void draw()override;
-    Imagesc(int x,int y,int width,int height);
+    Imagesc(int x,int y,int Width,int Height);
     void set_window_para();
     int handle(int event)override;
+};
+
+class FkWin:public Fl_Gl_Window
+{
+public:
+    fftw_complex *in,*out;
+    fftw_plan p;
+    float *fk;
+    double max_a=FLT_MIN,min_a=FLT_MAX;
+    bool isvalid=false;
+    void draw()override;
+    int handle(int event)override;
+    void hide()override;
+    FkWin(int x,int y,int Width,int Height,const char *title);
+    ~FkWin();
 };
 
 class Scatter:public Fl_Gl_Window
@@ -110,26 +128,12 @@ public:
     void findmvalues(int byte1,int byte2,int &max1,int &min1,int *arr1,int &max2,int &min2,int *arr2);
 };
 
-class FreeCounter:public Fl_Counter
-{
-    static void tc_cb(Fl_Widget *w,void *data);
-    static void tc_cb_bin(Fl_Widget *w,void *data);
-public:
-    int step_s,step_l;
-    Fl_Window *counter_set;
-    Fl_Int_Input *fi_curr,*fi_step_s,*fi_step_l;
-    Fl_Button *set_ok;
-    FreeCounter(int x,int y,int w,int h);
-    int handle(int event)override;
-};
-
 class Property:public Fl_Window
 {
 public:
     float fmax=FLT_MIN,fmin=FLT_MAX;
     static void global_but_cb(Fl_Widget *,void *);
-    Fl_Box *text_box;
-    Fl_Box *global_box;
+    Fl_Box *text_box,*global_box;
     Fl_Button *global_but;
     char property_text[512],global_text[512];
     Property(int W,int H,const char *title);
@@ -160,7 +164,6 @@ class Cutter:public Fl_Window
 public:
     unsigned char hdr[3600];
     char outfilename[256],outfolder[256];
-    Fl_Button *cut_but,*split_but;
     Fl_Button *open_file_cut,*open_file_split;
     Fl_Tabs *tabs;
     Fl_Group *CutGroup,*SplitGroup;
@@ -196,12 +199,13 @@ class App:public Fl_Window
     Fl_Text_Editor *hdr_text;
     Fl_Text_Buffer *tbuff;
     Fl_Button *open_button;
-    Fl_Window *TextWin=NULL,*HdrWin=NULL,*CroppingWin=NULL,*ColorbarWin=NULL;
+    Fl_Window *TextWin=NULL,*HdrWin=NULL,*CroppingWin=NULL;
     Fl_Native_File_Chooser *fc,*fcc,*fcd;
     Fl_Input_Choice *colormap_c;
+    int handle(int event)override;
+    void resize(int x,int y,int Width,int Height)override;
+    void hide()override;
     static void start_cb(Fl_Widget* widget,void *);
-    static void ts_cb(Fl_Widget *widget,void *);
-    static void ts_cb_bin(Fl_Widget *widget,void *);
     static void hdr_cb(Fl_Widget *widget,void *);
     static void format_cb(Fl_Widget *widget,void *);
     static void enhance_cb(Fl_Widget *widget,void *);
@@ -213,6 +217,7 @@ public:
     char mxy[64],amp_c[64];
     bool first_read=true;
     static void endian_cb(Fl_Widget *widget,void *);
+    Fl_Window *ColorbarWin=NULL;
     Fl_Menu_Bar *menus,*endian_menu1,*endian_menu2;
     bool is_bin=false,is_le=false;
     char filename[256],traces_c[32],samples_c[32],ld4_c[64];
@@ -229,20 +234,21 @@ public:
     const int height_of_menu=30,height_of_scroll=20;
     Fl_Chart *chart=NULL;
     const int nbin=60;
-    Fl_Box *where_mouse_box=NULL,*nan_box=NULL;
-    Fl_Input *input_load_hdr;
+    Fl_Box *nan_box=NULL;
+    Fl_Input *input_load_hdr,*where_mouse_box=NULL;
+    Fl_Int_Input *tc_step;
     Fl_Scrollbar *trace_slider;
-    FreeCounter *trace_counter;
+    Fl_Spinner *trace_counter;
     App(int X,int Y,int Width,int Height,const char *title);
     ~App();
     void close_them(bool all=false);
-    int handle(int event)override;
     void swap_bytes(float *seis_b,int length);
     void update_endian_menu(Fl_Menu_Bar *endian_menu);
     void detect_nan();
-    void open_figure();
+    void update_figure();
     void change_profile();
     void change_profile_bin();
+    void update_slider();
     void format_correct(float *seis_,int length);
     void read_data(const char *fname,bool utf_flag=true);
     void ieee2ibm(float *seis_b,int length);//公式已经考虑了字节序，无需再用swap_bytes转换
@@ -293,8 +299,7 @@ class MapViewWin:public Fl_Window
 {
     Fl_Box *text;
     Fl_Button *ok;
-    Fl_Int_Input *valueX;
-    Fl_Int_Input *valueY;
+    Fl_Int_Input *valueX,*valueY;
 public:
     MapViewWin(int W,int H,const char *title);
 };
@@ -305,6 +310,7 @@ ColorPoint **colors=NULL;
 ColorPoint *tmp_c=NULL;
 ColorBar *colorbar=NULL;
 Imagesc *ims=NULL;
+FkWin *fkwin=NULL;
 Scatter *sctr=NULL;
 Property *property=NULL;
 Progress *progress=NULL;
@@ -315,5 +321,6 @@ VHeaderTable *vht=NULL;
 ResultTable *rt=NULL;
 MapViewWin *mapview=NULL;
 void findnames(char* filename,manynames* outfile);
+void expand_right_menu(int evx,int evy,char *num);
 
 #endif
