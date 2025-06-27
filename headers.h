@@ -29,7 +29,7 @@
 #include<FL/fl_draw.H>
 #include<math.h>
 #include<float.h>
-//#include<fftw3.h>
+// #include<fftw3.h>
 #include"defs.h"
 
 #ifdef _WIN32
@@ -38,6 +38,8 @@
 #endif
 
 Fl_RGB_Image* ico = new Fl_RGB_Image(idata, 32, 32, 4, 0);
+bool ret_flag;
+int p100 = 0;
 struct manynames
 {
     char basename[128];
@@ -100,29 +102,30 @@ public:
     int handle(int event)override;
 };
 
-//class FkWin :public Fl_Gl_Window
-//{
-//public:
-//    fftw_complex* in, * out;
-//    fftw_plan p;
-//    float* fk;
-//    double max_a = FLT_MIN, min_a = FLT_MAX;
-//    bool isvalid = false;
-//    void draw()override;
-//    int handle(int event)override;
-//    void hide()override;
-//    FkWin(int x, int y, int Width, int Height, const char* title);
-//    ~FkWin();
-//};
+// class FkWin:public Fl_Gl_Window
+// {
+// public:
+//     fftw_complex *in,*out;
+//     fftw_plan p;
+//     float *fk;
+//     double max_a=FLT_MIN,min_a=FLT_MAX;
+//     bool isvalid=false;
+//     void draw()override;
+//     int handle(int event)override;
+//     void hide()override;
+//     FkWin(int x,int y,int Width,int Height,const char *title);
+//     ~FkWin();
+// };
 
 class Scatter :public Fl_Gl_Window
 {
 public:
-    bool isvalid = false, ret_flag;
+    bool isvalid = false;
     char ax_buf[4][20];
     int* xs, * ys;
     int xmax, xmin, ymax, ymin, v;
     void draw()override;
+    void hide()override;
     Scatter(int x, int y, int width, int height);
     ~Scatter();
     void findmvalues(int byte1, int byte2, int& max1, int& min1, int* arr1, int& max2, int& min2, int* arr2);
@@ -135,6 +138,7 @@ public:
     static void global_but_cb(Fl_Widget*, void*);
     Fl_Box* text_box, * global_box;
     Fl_Button* global_but;
+    void hide()override;
     char property_text[512], global_text[512];
     Property(int W, int H, const char* title);
 };
@@ -161,6 +165,7 @@ class Cutter :public Fl_Window
 {
     static void cut_cb(Fl_Widget*, void*);
     static void split_cb(Fl_Widget*, void*);
+    void hide()override;
 public:
     unsigned char hdr[3600];
     char outfilename[256], outfolder[256];
@@ -180,6 +185,7 @@ class Converter :public Fl_Window
     static void bformat_cb(Fl_Widget*, void*);
     static void convert_cb(Fl_Widget*, void*);
     static void bconvert_cb(Fl_Widget*, void*);
+    void hide()override;
 public:
     bool sun2pc;
     char outfilename[256];
@@ -311,9 +317,8 @@ ColorPoint* tmp_c = NULL;
 ColorBar* colorbar = NULL;
 Imagesc* ims = NULL;
 FkWin* fkwin = NULL;
-Scatter* sctr = NULL;
+Scatter* scatter = NULL;
 Property* property = NULL;
-Progress* progress = NULL;
 Cutter* cutter = NULL;
 Converter* converter = NULL;
 HeaderTable* headertable = NULL;
@@ -322,5 +327,6 @@ ResultTable* rt = NULL;
 MapViewWin* mapview = NULL;
 void findnames(char* filename, manynames* outfile);
 void expand_right_menu(int evx, int evy, char* num);
+void check_progress(Progress* progress, long long tr, long long total);
 
 #endif
