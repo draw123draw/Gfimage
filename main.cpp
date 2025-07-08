@@ -207,7 +207,19 @@ int ColorBar::handle(int event)
     return ret;
 }
 
-Imagesc::Imagesc(int x,int y,int Width,int Height):Fl_Gl_Window(x,y,Width,Height){}
+Imagesc::Imagesc(int x,int y,int Width,int Height):Fl_Gl_Window(x,y,Width,Height)
+{
+    initial_ims();
+}
+
+void Imagesc::initial_ims()
+{
+    max_a=FLT_MIN;
+    min_a=FLT_MAX;
+    max_abs_a=0;
+    c_norm=true,isvalid=false;
+}
+
 void Imagesc::draw()
 {
     int i,j;
@@ -1035,7 +1047,7 @@ void Converter::convert_cb(Fl_Widget *,void *)
                     sgn=-1;
                     buf[i]=buf[i]-128;
                 }
-                f=sgn*((buf[i+1]<<16)+(buf[i+2]<<8)+buf[i+3])/pow(16,70-float(buf[i]));
+                f=sgn*((buf[i+1]<<16)+(buf[i+2]<<8)+buf[i+3])*pow_table[buf[i]];
                 p=(unsigned char*)&f;
                 for(k=0;k<4;k++)buf[i+k]=p[k];
             }
@@ -1101,7 +1113,7 @@ void Converter::convert_cb(Fl_Widget *,void *)
                             ft*=16;
                         }
                     }
-                    fn=((sgn<<31)|(E<<24))|(unsigned)((1-2*sgn)*f*pow(16,70-(int)E));
+                    fn=((sgn<<31)|(E<<24))|(unsigned)((1-2*sgn)*f*pow_table[E]);
                     for(k=0;k<4;k++)buf[i+k]=pfn[3-k];
                 }
             }
@@ -1650,7 +1662,7 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     nan_box->hide();
     open_button->label("打开文件\n或将文件拖入窗口");
     open_button->callback(start_cb);
-    resizable(*ims);
+    resizable(ims);
     end();
     ColorbarWin=new Fl_Window(660,300,"Colorbar");
     ColorbarWin->begin();
@@ -1721,7 +1733,6 @@ App::~App()
 
 void App::close_them(bool all)
 {
-    ims->isvalid=false;
     delete scatter;scatter=NULL;
     delete cutter;cutter=NULL;
     delete converter;converter=NULL;
@@ -1730,7 +1741,6 @@ void App::close_them(bool all)
     delete HdrWin;HdrWin=NULL;
     delete property;property=NULL;
     delete rt;rt=NULL;
-    delete app->ColorbarWin;app->ColorbarWin=NULL;
     // delete fkwin;fkwin=NULL;
     if(all)
         fclose(fpi);
@@ -1771,10 +1781,10 @@ void App::update_figure()
     for(int cnt=0;cnt<enhance_cnt;cnt++)
         for(int i=0;i<trace_s*samples;i++)
             seis[i]=seis[i]<0?-logf(1-seis[i]):logf(1+seis[i]);
+    
     ims->set_window_para();
     ims->redraw();
     ims->show();
-
     if(ColorbarWin->shown())
     {
         histo=(int*)realloc(histo,nbin*4);//nbin==直方图区间个数
@@ -1792,9 +1802,11 @@ void App::update_figure()
 
 void App::read_data(const char *fname,bool utf_flag)
 {
+    ims->initial_ims();
     int i;
     is_bin=false;
-    if(!first_read)app->close_them(true);
+    if(!first_read)
+        app->close_them(true);
     if(utf_flag)fpi=fl_fopen(fname,"rb");
 	else fpi=fopen(fname,"rb");
     if(fpi==NULL)
@@ -1847,6 +1859,7 @@ void App::read_data(const char *fname,bool utf_flag)
     }
     format_correct(seis,trace_s*samples);
     detect_nan();
+    
     update_figure();
     trace_num=0;
     Fl_Menu_Item *item;
@@ -1907,7 +1920,6 @@ void App::read_data(const char *fname,bool utf_flag)
 
 void App::update_slider()
 {
-    
     if(traces>w()) // 文件太大则制作滚动条
     {
         ims->size(w(),h()-height_of_menu-height_of_scroll);
@@ -1945,17 +1957,17 @@ void App::detect_nan()
 
 void App::ieee2ibm(float *seis_b,int length)//公式已经考虑了字节序，无需再用swap_bytes转换
 {
-    char sgn;
-    unsigned char E,*p;
     for(int tr=0;tr<length;tr++)
     {
         if((seis_b[tr])!=0)
         {
+            char sgn;
+            unsigned char E,*p;
             p=(unsigned char*)&seis_b[tr];
             sgn=1-2*(p[0]>>7);
             E=p[0]<<1;
             E>>=1;
-            seis_b[tr]=sgn*((*(p+1)<<16)+(*(p+2)<<8)+*(p+3))*pow(16,(int)E-70);
+            seis_b[tr]=sgn*((*(p+1)<<16)+(*(p+2)<<8)+*(p+3))*pow_table[E];
         }
     }
 }
