@@ -1,6 +1,3 @@
-#define _CRT_SECURE_NO_WARNINGS
-#pragma comment(lib,"opengl32.lib")
-#pragma execution_character_set("utf-8")
 #include"headers.h"
 ColorPoint::ColorPoint(int x, int y, int w, int h, double r_, double g_, double b_, ColorBar* colorbar_) :Fl_Box(x, y, w, h)
 {
@@ -2326,3 +2323,4 @@ int main(int argc, char** argv)
         app->read_data(argv[1], false);
     return Fl::run();
 }
+
