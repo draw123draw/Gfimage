@@ -48,9 +48,11 @@ struct manynames
 	char base[128];
 	char ext[16];
 };
+
 class ColorBar;
 class ColorPoint;
 class Imagesc;
+class HeaderWin;
 class FkWin;
 class Scatter;
 class Scoordinate;
@@ -117,6 +119,17 @@ public:
 //     ~FkWin();
 // };
 
+class HeaderWin:public Fl_Window
+{
+    Fl_Button *check_text_but;
+    Fl_Text_Editor *hdr_text;
+    Fl_Text_Buffer *tbuff;
+public:
+    static void endian_cb(Fl_Widget *widget,void *);
+    Fl_Native_File_Chooser *fcd;
+    HeaderWin(int W,int H,const char *title);
+};
+
 class Scatter:public Fl_Gl_Window
 {
 public:
@@ -167,7 +180,6 @@ class Cutter:public Fl_Window
     static void split_cb(Fl_Widget *,void *);
     void hide()override;
 public:
-    unsigned char hdr[3600];
     char outfilename[256],outfolder[256];
     Fl_Button *open_file_cut,*open_file_split;
     Fl_Tabs *tabs;
@@ -202,27 +214,22 @@ public:
 class App:public Fl_Window
 {
     int open_x=120,open_y=50;//打开文件按钮
-    Fl_Text_Editor *hdr_text;
-    Fl_Text_Buffer *tbuff;
     Fl_Button *open_button;
-    Fl_Window *TextWin=NULL,*HdrWin=NULL,*CroppingWin=NULL;
-    Fl_Native_File_Chooser *fc,*fcc,*fcd;
+    Fl_Window *CroppingWin=NULL;
     Fl_Input_Choice *colormap_c;
     int handle(int event)override;
     void resize(int x,int y,int Width,int Height)override;
     void hide()override;
     static void start_cb(Fl_Widget* widget,void *);
-    static void hdr_cb(Fl_Widget *widget,void *);
     static void format_cb(Fl_Widget *widget,void *);
     static void enhance_cb(Fl_Widget *widget,void *);
     static void attenua_cb(Fl_Widget *widget,void *);
     static void load_clr_cb(Fl_Widget *widget,void *);
     static void save_clr_cb(Fl_Widget *widget,void *);
-    static void save_sgy_data_cb(Fl_Widget *w,void *);
 public:
+    Fl_Native_File_Chooser *fc,*fcc;
     char mxy[64],amp_c[64];
     bool first_read=true;
-    static void endian_cb(Fl_Widget *widget,void *);
     Fl_Window *ColorbarWin=NULL;
     Fl_Menu_Bar *menus,*endian_menu1,*endian_menu2;
     bool is_bin=false,is_le=false;
@@ -276,7 +283,8 @@ class HeaderTable:public Fl_Table_Row
     void draw_cell(TableContext context,int ROW=0,int COL=0,int X=0,int Y=0,int W=0,int H=0)override;
     void DrawHeader(const char *s,int X,int Y,int W,int H);
 public:
-    int trace_s_h=5,selected_R=1,bytes_num=4;
+    const int trace_s_h=5;
+    int selected_R=1,bytes_num=4;
     long long trace_num=0;
     unsigned char *hdrbytes_s;
     void get_hdr();
@@ -317,6 +325,7 @@ ColorPoint *tmp_c=NULL;
 ColorBar *colorbar=NULL;
 Imagesc *ims=NULL;
 FkWin *fkwin=NULL;
+HeaderWin *hdrwin=NULL;
 Scatter *scatter=NULL;
 Property *property=NULL;
 Cutter *cutter=NULL;
