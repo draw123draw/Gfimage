@@ -435,6 +435,217 @@ int Imagesc::handle(int event)
 //     return ret;
 // }
 
+HeaderWin::HeaderWin(int W,int H,const char *title):Fl_Window(W,H,title)
+{
+    fcd=new Fl_Native_File_Chooser();
+    fcd->filter("txt\t*.{txt}");
+    default_icon(ico);
+    begin();
+    headertable=new HeaderTable(20,60,460,440,"Trace Header");
+    rt=new ResultTable(20,520,442,22,0);
+    vht=new VHeaderTable(500,60,140,520,"Volume Header");
+    new FreeCounterHeader(70,10,200,25,"Trace:");
+    app->endian_menu2=new Fl_Menu_Bar(280,10,200,25);
+    app->endian_menu2->add("big-endian",0,endian_cb,0,FL_MENU_RADIO);
+    app->endian_menu2->add("little-endian",0,endian_cb,0,FL_MENU_RADIO);
+    app->update_endian_menu(app->endian_menu2);
+
+    check_text_but=new Fl_Button(520,10,100,25,"Text Header->");
+    check_text_but->callback([](Fl_Widget *w,void *)
+    {
+        Fl_Button *check_text_but=(Fl_Button*)w;
+        if(hdrwin->w()==660)
+        {
+            hdrwin->size(1200,600);
+            check_text_but->label("Text Header<-");
+        }
+        else
+        {
+            hdrwin->size(660,600);
+            check_text_but->label("Text Header->");
+        }
+    });
+    hdr_text=new Fl_Text_Editor(670,10,510,540);
+    hdr_text->textsize(10);
+    tbuff=new Fl_Text_Buffer();
+    hdr_text->buffer(tbuff);
+    unsigned char ebc[40][80];
+    char asc[40][80];
+    int i,j;
+    fseeko64(app->fpi,0,0);
+    for(i=0;i<40;i++)
+    {
+        fread(ebc[i],1,80,app->fpi);
+        for(j=0;j<80;j++)
+            asc[i][j]=e2a[ebc[i][j]];
+        asc[i][79]='\0';
+        tbuff->append(asc[i]);
+        tbuff->append("\n");
+    }
+    Fl_Button *save_but=new Fl_Button(670,560,100,25,"save as");
+    save_but->callback([](Fl_Widget *,void *)
+    {
+        int i,j;
+        Fl_Native_File_Chooser native;
+        native.title("Save As");
+        native.filter("SEGY\t*.{sgy,segy,SEGY,segy}");
+        native.preset_file("output.sgy");
+        native.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
+        switch(native.show())
+        {
+            case -1:break;
+            case 1:fl_beep();break;
+            default:
+            if(NULL==(app->fpo=fl_fopen(native.filename(),"wb")))
+                fl_message("路径不存在，请手动创建该路径");
+            char asc_out[3200]={32};
+            int tb_len=hdrwin->hdr_text->buffer()->length();
+            unsigned char ebc_out[40][80]={{0}};
+            for(i=0;i<(tb_len>3200?3200:tb_len);i++)
+                asc_out[i]=hdrwin->tbuff->text()[i];
+            for(i=0;i<40;i++)
+            {
+                for(j=0;j<80;j++)
+                    ebc_out[i][j]=a2e[(unsigned char)asc_out[i*80+j]];
+                fwrite(ebc_out[i],1,80,app->fpo);
+            }
+            fwrite(app->hdr+3200,1,400,app->fpo);
+            fseeko64(app->fpi,3600,0);
+            unsigned char *tbuf=(unsigned char*)malloc(240+4*app->samples);
+            hdrwin->begin();
+            Progress *progress=new Progress(800,560,300,25);
+            hdrwin->end();
+            p100=0;
+            for(long long tr=0;tr<app->traces;tr++)
+            {
+                check_progress(progress,tr,app->traces);
+                if(ret_flag)break;
+                fread(tbuf,1,240+4*app->samples,app->fpi);
+                fwrite(tbuf,1,240+4*app->samples,app->fpo);
+            }
+            hdrwin->remove(progress);
+            hdrwin->redraw();
+            free(tbuf);
+            fclose(app->fpo);
+        }
+    });
+
+    Fl_Button *export_hdr=new Fl_Button(20,560,100,30,"export value");
+    Fl_Button *load_hdr=new Fl_Button(130,555,100,40,"load from\n&& save");
+    app->input_load_hdr=new Fl_Input(240,560,200,30);
+    Fl_Button *open_but=new Fl_Button(445,560,40,30,"@fileopen");
+    open_but->callback([](Fl_Widget *,void *)
+    {
+        Fl_Native_File_Chooser native;
+        native.title("open header txt");
+        native.type(Fl_Native_File_Chooser::BROWSE_FILE);
+        native.filter("txt\t*.{txt}");
+        switch(native.show())
+        {
+            case -1:break;
+            case 1:fl_beep();break;
+            default:
+                app->input_load_hdr->value(native.filename());
+        }
+    });
+    export_hdr->callback([](Fl_Widget *,void *)
+    {
+        hdrwin->fcd->title("output");
+        hdrwin->fcd->preset_file("output.txt");
+        hdrwin->fcd->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
+        switch(hdrwin->fcd->show())
+        {
+            case -1:break;
+            case 1:fl_beep();break;
+            default:
+            int hdrv;
+            unsigned char *p=(unsigned char*)&hdrv;
+            FILE *fp;
+            if(NULL==(fp=fl_fopen(hdrwin->fcd->filename(),"w")))
+                fl_message("路径不存在，请手动创建该路径");
+            fseeko64(app->fpi,3600,0);
+            for(long long tr=0;tr<app->traces;tr++)
+            {
+                fseeko64(app->fpi,headertable->selected_R-1,1);
+                if(app->is_le){p[0]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[3]=fgetc(app->fpi);}
+                else {p[3]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[0]=fgetc(app->fpi);}
+                fprintf(fp,"%d\n",hdrv);
+                fseeko64(app->fpi,241-4-headertable->selected_R+4*app->samples,1);
+            }
+            fclose(fp);
+            fl_message("输出成功!");
+        }
+    });
+    load_hdr->callback([](Fl_Widget *,void *)
+    {
+        if(0==strcmp(app->input_load_hdr->value(),""))
+        {
+            fl_message("请输入按钮右侧路径喵!");
+            return;
+        }
+        app->fc->title("save sgy");
+        app->fc->preset_file("output.sgy");
+        app->fc->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
+        switch(app->fc->show())
+        {
+            case -1:break;
+            case 1:fl_beep();break;
+            default:
+            FILE *fp,*fps;
+            if(NULL==(fp=fl_fopen(app->input_load_hdr->value(),"r")))
+                fl_message("未找到道头文件");
+            if(NULL==(fps=fl_fopen(app->fc->filename(),"wb")))
+                fl_message("路径不存在，请手动创建该路径");
+            int hdrv,hdr_loc;
+            hdr_loc=headertable->selected_R-1;
+            unsigned char *p=(unsigned char*)&hdrv;
+            unsigned char *buf=(unsigned char*)malloc(240+4*app->samples);
+            fseeko64(app->fpi,3600,0);
+            fwrite(app->hdr,3600,1,fps);
+            if(app->is_le)
+            {
+                for(long long tr=0;tr<app->traces;tr++)
+                {
+                    fread(buf,1,240+4*app->samples,app->fpi);
+                    fscanf(fp,"%d",&hdrv);
+                    for(int k=0;k<4;k++)buf[hdr_loc+k]=p[k];
+                    fwrite(buf,1,240+4*app->samples,fps);
+                }
+            }
+            else
+            {
+                for(long long tr=0;tr<app->traces;tr++)
+                {
+                    fread(buf,1,240+4*app->samples,app->fpi);
+                    fscanf(fp,"%d",&hdrv);
+                    for(int k=0;k<4;k++)buf[hdr_loc+k]=p[3-k];
+                    fwrite(buf,1,240+4*app->samples,fps);
+                }
+            }
+            free(buf);
+            fclose(fp);fclose(fps);
+        }
+    });
+    end();
+    show();
+}
+
+void HeaderWin::endian_cb(Fl_Widget *w,void *)
+{
+    Fl_Menu_Bar *bar=(Fl_Menu_Bar*)w;
+    const Fl_Menu_Item *item=bar->mvalue();
+    if(0==strcmp(item->label(),"big-endian"))
+    {
+        app->is_le=false;
+        if(rt)rt->redraw();
+    }
+    else //if(0==strcmp(item->label(),"little-endian")
+    {
+        app->is_le=true;
+        if(rt)rt->redraw();
+    }
+}
+
 Scatter::Scatter(int X,int Y,int W,int H):Fl_Gl_Window(X,Y,W,H)
 {
     xs=(int*)malloc(4*app->traces);
@@ -578,20 +789,6 @@ int FreeCounterHeader::handle(int event)
         break;
     }
     return ret;
-}
-
-void App::start_cb(Fl_Widget *,void *)
-{
-    app->fc->title("Open SEGY File");
-    app->fc->type(Fl_Native_File_Chooser::BROWSE_FILE);
-    switch(app->fc->show())
-    {
-        case -1:break;//Error
-        case 1:fl_beep();break;//Cancel
-        default:
-        app->read_data(app->fc->filename());
-        break;
-    }
 }
 
 void App::change_profile()
@@ -760,7 +957,6 @@ Cutter::Cutter(int W,int H,const char *title):Fl_Window(W,H,title)
     strcat(outfilename,app->filenames.base);
     strcpy(outfolder,app->filenames.path_slash);
     strcat(outfilename,"_sc.sgy");
-    memcpy(hdr,app->hdr,3600);
     tabs=new Fl_Tabs(10,10,480,180);
     CutGroup=new Fl_Group(10,35,480,155,"Cut");
     {
@@ -919,42 +1115,42 @@ void Cutter::cut_cb(Fl_Widget *,void *)
     start_trace--;start_sample--;
     if(NULL==(app->fpo=fl_fopen(cutter->input_cut->value(),"wb")))
         fl_message("路径不存在,请手动创建该路径");
-    Nsample=(end_sample-start_sample)/(dsample+1.0);
-    if(cutter->hdr[3224]==0)
+    Nsample=ceil((end_sample-start_sample)/(dsample+1.0));
+    unsigned char whdr[3600];
+    unsigned char tbuf[240];
+    memcpy(whdr,app->hdr,3600);
+    if(whdr[3224]==0)
     {
-        cutter->hdr[3220]=Nsample/256;
-        cutter->hdr[3221]=Nsample%256;
+        whdr[3220]=Nsample/256;
+        whdr[3221]=Nsample%256;
     }
     else
     {
-        cutter->hdr[3220]=Nsample%256;
-        cutter->hdr[3221]=Nsample/256;
+        whdr[3220]=Nsample%256;
+        whdr[3221]=Nsample/256;
     }
-    fwrite(cutter->hdr,1,3600,app->fpo);
+    fwrite(whdr,1,3600,app->fpo);
     float f;
-    unsigned char *tbuf=(unsigned char*)malloc(240);
     fseeko64(app->fpi,3600+start_trace*(240+4*app->samples),0);
     p100=0;
     for(long long tr=start_trace;tr<end_trace;tr+=dtrace+1)
     {
         check_progress(progress,tr-start_trace,end_trace-start_trace);
         if(ret_flag)break;
-        fseeko64(app->fpi,dtrace*(240+4*app->samples),1);
         fread(tbuf,1,240,app->fpi);
         fwrite(tbuf,1,240,app->fpo);
         fseeko64(app->fpi,start_sample*4,1);
         for(int nt=start_sample;nt<end_sample;nt+=dsample+1)
         {
-            fseeko64(app->fpi,dsample*4,1);
             fread(&f,4,1,app->fpi);
             fwrite(&f,4,1,app->fpo);
+            fseeko64(app->fpi,dsample*4,1);
         }
-        fseeko64(app->fpi,4*(app->samples-end_sample),1);
+        fseeko64(app->fpi,4*(((end_sample-start_sample)%(dsample+1))-dsample-1)+4*(app->samples-end_sample)+dtrace*(240+4*app->samples),1);
     }
     cutter->remove(progress);
     cutter->redraw();
     fclose(app->fpo);
-    free(tbuf);
 }
 
 void Cutter::split_cb(Fl_Widget *,void *)
@@ -1031,11 +1227,11 @@ void Converter::convert_cb(Fl_Widget *,void *)
             if(ret_flag)break;
             fread(theader,1,240,app->fpi);
 //全给换了得了，2位的换下位置就ok
-            for(i=0;i<240;i+=4)
-            {
-                tc=theader[i];theader[i]=theader[i+3];theader[i+3]=tc;
-                tc=theader[i+1];theader[i+1]=theader[i+2];theader[i+2]=tc;
-            }
+            // for(i=0;i<240;i+=4)
+            // {
+            //     tc=theader[i];theader[i]=theader[i+3];theader[i+3]=tc;
+            //     tc=theader[i+1];theader[i+1]=theader[i+2];theader[i+2]=tc;
+            // }
             fwrite(theader,1,240,app->fpo);
             fread(buf,1,4*app->samples,app->fpi);
 //这里先获取的振幅再根据振幅转ibm
@@ -1078,11 +1274,11 @@ void Converter::convert_cb(Fl_Widget *,void *)
             check_progress(progress,tr,app->traces);
             if(ret_flag)break;
             fread(theader,1,240,app->fpi);
-            for(i=0;i<240;i+=4)
-            {
-                tc=theader[i];theader[i]=theader[i+3];theader[i+3]=tc;
-                tc=theader[i+1];theader[i+1]=theader[i+2];theader[i+2]=tc;
-            }
+            // for(i=0;i<240;i+=4)
+            // {
+            //     tc=theader[i];theader[i]=theader[i+3];theader[i+3]=tc;
+            //     tc=theader[i+1];theader[i+1]=theader[i+2];theader[i+2]=tc;
+            // }
             fwrite(theader,1,240,app->fpo);
             fread(buf,1,4*app->samples,app->fpi);
     //这里先获取的振幅再根据振幅转ibm
@@ -1266,143 +1462,6 @@ void App::format_cb(Fl_Widget *widget,void *)
     app->change_profile();
 }
 
-void App::hdr_cb(Fl_Widget *,void *)
-{
-    if(app->HdrWin==NULL)
-        app->HdrWin=new Fl_Window(660,600,"Headers");
-    else
-    {
-        app->HdrWin->show();
-        return;
-    }
-    app->HdrWin->default_icon(ico);
-    app->HdrWin->begin();
-    {
-        headertable=new HeaderTable(20,20,460,440,"Trace Header");
-        rt=new ResultTable(20,480,442,22,0);
-        vht=new VHeaderTable(500,20,140,560,"Volume Header");
-        new FreeCounterHeader(70,520,200,25,"Trace:");
-        app->endian_menu2=new Fl_Menu_Bar(280,520,200,25);
-        app->endian_menu2->add("big-endian",0,app->endian_cb,0,FL_MENU_RADIO);
-        app->endian_menu2->add("little-endian",0,app->endian_cb,0,FL_MENU_RADIO);
-        app->update_endian_menu(app->endian_menu2);
-        Fl_Button *export_hdr=new Fl_Button(20,560,100,30,"export value");
-        Fl_Button *load_hdr=new Fl_Button(130,555,100,40,"load from\n&& save");
-        app->input_load_hdr=new Fl_Input(240,560,200,30);
-        Fl_Button *open_but=new Fl_Button(445,560,40,30,"@fileopen");
-        open_but->callback([](Fl_Widget *,void *)
-        {
-            Fl_Native_File_Chooser native;
-            native.title("open header txt");
-            native.type(Fl_Native_File_Chooser::BROWSE_FILE);
-            native.filter("txt\t*.{txt}");
-            switch(native.show())
-            {
-                case -1:break;
-                case 1:fl_beep();break;
-                default:
-                    app->input_load_hdr->value(native.filename());
-            }
-        });
-        export_hdr->callback([](Fl_Widget *,void *)
-        {
-            app->fcd->title("output");
-            app->fcd->preset_file("output.txt");
-            app->fcd->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
-            switch(app->fcd->show())
-            {
-                case -1:break;
-                case 1:fl_beep();break;
-                default:
-                int hdrv;
-                unsigned char *p=(unsigned char*)&hdrv;
-                FILE *fp;
-                if(NULL==(fp=fl_fopen(app->fcd->filename(),"w")))
-                    fl_message("路径不存在，请手动创建该路径");
-                fseeko64(app->fpi,3600,0);
-                for(long long tr=0;tr<app->traces;tr++)
-                {
-                    fseeko64(app->fpi,headertable->selected_R-1,1);
-                    if(app->is_le){p[0]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[3]=fgetc(app->fpi);}
-                    else {p[3]=fgetc(app->fpi);p[2]=fgetc(app->fpi);p[1]=fgetc(app->fpi);p[0]=fgetc(app->fpi);}
-                    fprintf(fp,"%d\n",hdrv);
-                    fseeko64(app->fpi,241-4-headertable->selected_R+4*app->samples,1);
-                }
-                fclose(fp);
-                fl_message("输出成功!");
-            }
-        });
-        load_hdr->callback([](Fl_Widget *,void *)
-        {
-            if(0==strcmp(app->input_load_hdr->value(),""))
-            {
-                fl_message("请输入按钮右侧路径喵!");
-                return;
-            }
-            app->fc->title("save sgy");
-            app->fc->preset_file("output.sgy");
-            app->fc->type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
-            switch(app->fc->show())
-            {
-                case -1:break;
-                case 1:fl_beep();break;
-                default:
-                FILE *fp,*fps;
-                if(NULL==(fp=fl_fopen(app->input_load_hdr->value(),"r")))
-                    fl_message("未找到道头文件");
-                if(NULL==(fps=fl_fopen(app->fc->filename(),"wb")))
-                    fl_message("路径不存在，请手动创建该路径");
-                int hdrv,hdr_loc;
-                hdr_loc=headertable->selected_R-1;
-                unsigned char *p=(unsigned char*)&hdrv;
-                unsigned char *buf=(unsigned char*)malloc(240+4*app->samples);
-                fseeko64(app->fpi,3600,0);
-                fwrite(app->hdr,3600,1,fps);
-                if(app->is_le)
-                {
-                    for(long long tr=0;tr<app->traces;tr++)
-                    {
-                        fread(buf,1,240+4*app->samples,app->fpi);
-                        fscanf(fp,"%d",&hdrv);
-                        for(int k=0;k<4;k++)buf[hdr_loc+k]=p[k];
-                        fwrite(buf,1,240+4*app->samples,fps);
-                    }
-                }
-                else
-                {
-                    for(long long tr=0;tr<app->traces;tr++)
-                    {
-                        fread(buf,1,240+4*app->samples,app->fpi);
-                        fscanf(fp,"%d",&hdrv);
-                        for(int k=0;k<4;k++)buf[hdr_loc+k]=p[3-k];
-                        fwrite(buf,1,240+4*app->samples,fps);
-                    }
-                }
-                free(buf);
-                fclose(fp);fclose(fps);
-            }
-        });
-    }
-    app->HdrWin->end();
-    app->HdrWin->show();
-}
-
-void App::endian_cb(Fl_Widget *w,void *)
-{
-    Fl_Menu_Bar *bar=(Fl_Menu_Bar*)w;
-    const Fl_Menu_Item *item=bar->mvalue();
-    if(0==strcmp(item->label(),"big-endian"))
-    {
-        app->is_le=false;
-        if(rt)rt->redraw();
-    }
-    else //if(0==strcmp(item->label(),"little-endian")
-    {
-        app->is_le=true;
-        if(rt)rt->redraw();
-    }
-}
-
 void App::enhance_cb(Fl_Widget *,void *)
 {
     app->enhance_cnt++;
@@ -1475,118 +1534,41 @@ void App::save_clr_cb(Fl_Widget *,void *)
     }
 }
 
-void App::save_sgy_data_cb(Fl_Widget *,void *)
-{
-    int i,j;
-    Fl_Native_File_Chooser native;
-    native.title("Save As");
-    native.filter("SEGY\t*.{sgy,segy,SEGY,segy}");
-    native.preset_file("output.sgy");
-    native.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE);
-    switch(native.show())
-    {
-        case -1:break;
-        case 1:fl_beep();break;
-        default:
-        if(NULL==(app->fpo=fl_fopen(native.filename(),"wb")))
-            fl_message("路径不存在，请手动创建该路径");
-        char asc_out[3200]={32};
-        int tb_len=app->hdr_text->buffer()->length();
-        unsigned char ebc_out[40][80]={{0}};
-        for(i=0;i<(tb_len>3200?3200:tb_len);i++)
-            asc_out[i]=app->tbuff->text()[i];
-        for(i=0;i<40;i++)
-        {
-            for(j=0;j<80;j++)
-                ebc_out[i][j]=a2e[(unsigned char)asc_out[i*80+j]];
-            fwrite(ebc_out[i],1,80,app->fpo);
-        }
-        fwrite(app->hdr+3200,1,400,app->fpo);
-        fseeko64(app->fpi,3600,0);
-        unsigned char *tbuf=(unsigned char*)malloc(240+4*app->samples);
-        app->TextWin->begin();
-        Progress *progress=new Progress(150,735,240,25);
-        app->TextWin->end();
-        p100=0;
-        for(long long tr=0;tr<app->traces;tr++)
-        {
-            check_progress(progress,tr,app->traces);
-            if(ret_flag)break;
-            fread(tbuf,1,240+4*app->samples,app->fpi);
-            fwrite(tbuf,1,240+4*app->samples,app->fpo);
-        }
-        app->TextWin->remove(progress);
-        app->TextWin->redraw();
-        free(tbuf);
-        fclose(app->fpo);
-    }
-}
-
 App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width,Height,title)
 {
     Fl::scheme("gtk+");
     default_icon(ico);
     begin();
+
     fc=new Fl_Native_File_Chooser();
-    fcc=new Fl_Native_File_Chooser();
-    fcd=new Fl_Native_File_Chooser();
     fc->filter("SEGY\t*.{sgy,segy,SEGY,segy}");
+    fcc=new Fl_Native_File_Chooser();
     fcc->filter("Text\t*.{txt,csv,clr}");
-    fcd->filter("txt\t*.{txt}");
+
     menus=new Fl_Menu_Bar(0,0,Width,height_of_menu);
     menus->add("Property",0,[](Fl_Widget *,void *)
     {
         if(property==NULL)property=new Property(500,500,"property");
         else {property->show();return;}
     },0,FL_MENU_INACTIVE);
-    menus->add("Tools/Textual Header Editor",0,[](Fl_Widget *,void *)
+    menus->add("Tools/Headers",0,[](Fl_Widget *,void *)
     {
-        if(app->TextWin==NULL)
-            app->TextWin=new Fl_Window(740,770,"Header Text");
-        else
-        {
-            app->TextWin->show();
-            return;
-        }
-        app->TextWin->default_icon(ico);
-        app->TextWin->begin();
-        {
-            app->hdr_text=new Fl_Text_Editor(10,10,720,720);
-            app->tbuff=new Fl_Text_Buffer();
-            app->hdr_text->buffer(app->tbuff);
-            unsigned char ebc[40][80];
-            char asc[40][80];
-            int i,j;
-            fseeko64(app->fpi,0,0);
-            for(i=0;i<40;i++)
-            {
-                fread(ebc[i],1,80,app->fpi);
-                for(j=0;j<80;j++)
-                    asc[i][j]=e2a[ebc[i][j]];
-                asc[i][79]='\0';
-                app->tbuff->append(asc[i]);
-                app->tbuff->append("\n");
-            }
-            Fl_Button *save_but=new Fl_Button(10,735,100,30,"save as");
-            save_but->callback(save_sgy_data_cb);
-        }
-        app->TextWin->end();
-        app->TextWin->show();
+        if(hdrwin==NULL)hdrwin=new HeaderWin(660,600,"Headers");   
+        else {hdrwin->show();return;}
     },0,FL_MENU_INACTIVE);
-    menus->add("Tools/Headers",0,hdr_cb,0,FL_MENU_INACTIVE);
     menus->add("Tools/Cutter-Separater",0,[](Fl_Widget *,void *)
     {
-        if(cutter==NULL) cutter=new Cutter(500,200,"Cropping");
+        if(cutter==NULL)cutter=new Cutter(500,200,"Cropping");
         else {cutter->show();return;}
     },0,FL_MENU_INACTIVE);
     menus->add("Tools/Format Converting",0,[](Fl_Widget *,void *)
     {
-        if(converter==NULL) converter=new Converter(500,200,"Format Converting");
+        if(converter==NULL)converter=new Converter(500,200,"Format Converting");
         else {converter->show();return;}
     },0,FL_MENU_INACTIVE);
     menus->add("Tools/Map view",0,[](Fl_Widget *,void *)
     {
-        if(mapview==NULL) mapview=new MapViewWin(500,500,"map view");
+        if(mapview==NULL)mapview=new MapViewWin(500,500,"map view");
         else {mapview->show();return;}
     },0,FL_MENU_INACTIVE);
     // menus->add("Tools/F-k View",0,[](Fl_Widget *,void *)
@@ -1661,7 +1643,19 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     nan_box->labelfont(FL_TIMES_BOLD);
     nan_box->hide();
     open_button->label("打开文件\n或将文件拖入窗口");
-    open_button->callback(start_cb);
+    open_button->callback([](Fl_Widget *,void *)
+    {
+        app->fc->title("Open SEGY File");
+        app->fc->type(Fl_Native_File_Chooser::BROWSE_FILE);
+        switch(app->fc->show())
+        {
+            case -1:break;//Error
+            case 1:fl_beep();break;//Cancel
+            default:
+            app->read_data(app->fc->filename());
+            break;
+        }
+    });
     resizable(ims);
     end();
     ColorbarWin=new Fl_Window(660,300,"Colorbar");
@@ -1737,8 +1731,7 @@ void App::close_them(bool all)
     delete cutter;cutter=NULL;
     delete converter;converter=NULL;
     delete CroppingWin;CroppingWin=NULL;
-    delete TextWin;TextWin=NULL;
-    delete HdrWin;HdrWin=NULL;
+    delete hdrwin;hdrwin=NULL;
     delete property;property=NULL;
     delete rt;rt=NULL;
     // delete fkwin;fkwin=NULL;
@@ -1889,7 +1882,6 @@ void App::read_data(const char *fname,bool utf_flag)
     }
     item=(Fl_Menu_Item*)menus->find_item("Tools/Headers");item->flags=is_bin?FL_MENU_INACTIVE:0;
     item=(Fl_Menu_Item*)menus->find_item("Tools/Map view");item->flags=is_bin?FL_MENU_INACTIVE:0;
-    item=(Fl_Menu_Item*)menus->find_item("Tools/Textual Header Editor");item->flags=is_bin?FL_MENU_INACTIVE:0;
     switch(fmk)
     {
         case 0:
@@ -2228,8 +2220,8 @@ MapViewWin::MapViewWin(int W,int H,const char *title):Fl_Window(W,H,title)
     valueY=new Fl_Int_Input(30,60,40,25,"Y:");
     ok=new Fl_Button(80,30,50,25,"确认");
     app->endian_menu1=new Fl_Menu_Bar(80,60,200,25);
-    app->endian_menu1->add("big-endian",0,app->endian_cb,0,FL_MENU_RADIO);
-    app->endian_menu1->add("little-endian",0,app->endian_cb,0,FL_MENU_RADIO);
+    app->endian_menu1->add("big-endian",0,hdrwin->endian_cb,0,FL_MENU_RADIO);
+    app->endian_menu1->add("little-endian",0,hdrwin->endian_cb,0,FL_MENU_RADIO);
     app->update_endian_menu(app->endian_menu1);
     scatter=new Scatter(10,90,480,400);
     ok->callback([](Fl_Widget *,void *)
@@ -2295,6 +2287,10 @@ void expand_right_menu(int evx,int evy,char *num)
     right_menu1.add("色标",0,[](Fl_Widget *,void *)
     {
         app->ColorbarWin->show();
+    },0);
+    right_menu1.add("该列数据",0,[](Fl_Widget *,void *)
+    {
+        
     },0);
     right_menu1.popup();
 }
