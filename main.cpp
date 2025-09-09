@@ -884,7 +884,6 @@ void App::format_correct(float *seis_,int length)
             swap_bytes(seis_,length);
         break;
         case 3:
-            fprintf(stderr,"321\n");
             ieee2ibm(seis_,length);
         break;
         case 4:
