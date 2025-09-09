@@ -59,6 +59,8 @@ class ColorPoint;
 class Imagesc;
 class HeaderWin;
 class FkWin;
+class Plot;
+class Progress;
 class Scatter;
 class Scoordinate;
 class FreeCounter;
@@ -114,7 +116,7 @@ class Plot:public Fl_Gl_Window
 {
 public:
     void draw()override;
-    Plot(int Width,int Height,const char *title);
+    Plot(int x,int y,int Width,int Height);
     int handle(int event)override;
     int evx;
     float p_min,p_max;
@@ -246,7 +248,7 @@ public:
     Fl_Native_File_Chooser *fc,*fcc;
     char mxy[64],amp_c[64];
     bool first_read=true;
-    Fl_Window *ColorbarWin=NULL;
+    Fl_Window *ColorbarWin=NULL,*PlotWin=NULL;
     Fl_Menu_Bar *menus,*endian_menu1,*endian_menu2;
     bool is_bin=false,is_le=false;
     char filename[256],traces_c[32],samples_c[32],ld4_c[64];
@@ -263,7 +265,7 @@ public:
     const int height_of_menu=30,height_of_scroll=20;
     Fl_Chart *chart=NULL;
     const int nbin=60;
-    Fl_Box *nan_box=NULL;
+    Fl_Box *nan_box=NULL,*plt_note=NULL;
     Fl_Input *input_load_hdr,*where_mouse_box=NULL;
     Fl_Int_Input *tc_step;
     Fl_Scrollbar *trace_slider;
@@ -341,7 +343,7 @@ ColorPoint *tmp_c=NULL;
 ColorBar *colorbar=NULL;
 Imagesc *ims=NULL;
 Plot *plt=NULL;
-FkWin *fkwin=NULL;
+// FkWin *fkwin=NULL;
 HeaderWin *hdrwin=NULL;
 Scatter *scatter=NULL;
 Property *property=NULL;
