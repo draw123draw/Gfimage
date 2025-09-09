@@ -360,9 +360,8 @@ int Imagesc::handle(int event)
     return ret;
 }
 
-Plot::Plot(int Width,int Height,const char *title):Fl_Gl_Window(0,0,Width,Height,title)
+Plot::Plot(int x,int y,int Width,int Height):Fl_Gl_Window(0,0,Width,Height)
 {
-    set_non_modal();
     mode(FL_DOUBLE);
 }
 
@@ -371,7 +370,7 @@ void Plot::draw()
     glClearColor(1,1,1,0);
     glClear(GL_COLOR_BUFFER_BIT);
     glViewport(0,0,w(),h());
-    glLoadIdentity();//重置
+    glLoadIdentity();
     glOrtho(0,app->samples,p_min,p_max,-1,1);
     glColor3f(0.0,0.0,0.0);
     glBegin(GL_LINE_STRIP);
@@ -382,7 +381,17 @@ void Plot::draw()
 
 int Plot::handle(int event)
 {
-    return Fl_Gl_Window::handle(event);
+    int ret=Fl_Gl_Window::handle(event);
+    switch(event)
+    {
+        case FL_MOVE:
+        char note[128];
+        int smp_num=(app->samples+1)*Fl::event_x()/w();
+        sprintf(note,"Sample:%d,Amp:%f",smp_num,app->seis[(evx-1)*app->samples+smp_num]);
+        app->plt_note->copy_label(note);
+        ret=1;break;
+    }
+    return ret;
 }
 
 // FkWin::FkWin(int X,int Y,int Width,int Height,const char *title):Fl_Gl_Window(X,Y,Width,Height,title)
@@ -875,6 +884,7 @@ void App::format_correct(float *seis_,int length)
             swap_bytes(seis_,length);
         break;
         case 3:
+            fprintf(stderr,"321\n");
             ieee2ibm(seis_,length);
         break;
         case 4:
@@ -1758,9 +1768,17 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
         end->callback([](Fl_Widget*,void *){app->ColorbarWin->hide();});
     }
     ColorbarWin->set_non_modal();
-    ColorbarWin->redraw();
     ColorbarWin->end();
     ColorbarWin->hide();
+
+    PlotWin=new Fl_Window(700,230,"Single Trace Plot");
+    PlotWin->begin();
+    {
+        plt_note=new Fl_Box(0,200,700,30);
+    }
+    PlotWin->set_non_modal();
+    PlotWin->callback([](Fl_Widget*,void *){ims->show_red_line=false;app->PlotWin->hide();ims->redraw();});
+    PlotWin->hide();
 }
 
 void App::hide()
@@ -2348,7 +2366,10 @@ void expand_right_menu(int evx,int evy,char *num)
         ims->show_red_line=true;
         ims->redraw();
         if(plt!=NULL)delete plt;
-        plt=new Plot(700,200,"Single Trace");
+        app->PlotWin->begin();
+        plt=new Plot(0,0,700,200);
+        app->PlotWin->end();
+        app->PlotWin->show();
         plt->evx=data->evx;
         for(int i=0;i<app->samples;i++)
         {
