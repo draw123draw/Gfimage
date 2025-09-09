@@ -48,6 +48,11 @@ struct manynames
 	char base[128];
 	char ext[16];
 };
+struct MenuData
+{
+    int evx;
+    int evy;
+};
 
 class ColorBar;
 class ColorPoint;
@@ -96,12 +101,23 @@ class Imagesc:public Fl_Gl_Window
 {
 public:
     float max_a,min_a,max_abs_a;
-    bool c_norm,isvalid;
+    int red_line_x;
+    bool c_norm,isvalid,show_red_line;
     void draw()override;
     Imagesc(int x,int y,int Width,int Height);
     void set_window_para();
     void initial_ims();
     int handle(int event)override;
+};
+
+class Plot:public Fl_Gl_Window
+{
+public:
+    void draw()override;
+    Plot(int Width,int Height,const char *title);
+    int handle(int event)override;
+    int evx;
+    float p_min,p_max;
 };
 
 // class FkWin:public Fl_Gl_Window
@@ -152,7 +168,7 @@ public:
     Fl_Box *text_box,*global_box;
     Fl_Button *global_but;
     void hide()override;
-    char property_text[512],global_text[512];
+    char global_text[512];
     Property(int W,int H,const char *title);
 };
 
@@ -324,6 +340,7 @@ ColorPoint **colors=NULL;
 ColorPoint *tmp_c=NULL;
 ColorBar *colorbar=NULL;
 Imagesc *ims=NULL;
+Plot *plt=NULL;
 FkWin *fkwin=NULL;
 HeaderWin *hdrwin=NULL;
 Scatter *scatter=NULL;
