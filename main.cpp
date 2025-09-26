@@ -375,8 +375,16 @@ void Plot::draw()
     glColor3f(0.0,0.0,0.0);
     glBegin(GL_LINE_STRIP);
     for(float x=0.0;x<=app->samples;x+=1)
-        glVertex2f(x,app->seis[evx*app->samples+(int)x]);
+        glVertex2f(x,app->seis[evx_app*app->samples+(int)x]);
     glEnd();
+    if(draw_mouse_line)
+    {
+        glBegin(GL_LINES);
+        glColor3f(0.0,1.0,0.0);
+        glVertex2i(Fl::event_x()*app->samples/w(),p_min);
+        glVertex2i(Fl::event_x()*app->samples/w(),p_max);
+        glEnd();
+    }
 }
 
 int Plot::handle(int event)
@@ -387,8 +395,11 @@ int Plot::handle(int event)
         case FL_MOVE:
         char note[128];
         int smp_num=(app->samples+1)*Fl::event_x()/w();
-        sprintf(note,"Sample:%d,Amp:%f",smp_num,app->seis[(evx-1)*app->samples+smp_num]);
+        sprintf(note,"Sample:%d,Amp:%f",smp_num,app->seis[(evx_app-1)*app->samples+smp_num]);
         app->plt_note->copy_label(note);
+
+        draw_mouse_line=true;
+        redraw();
         ret=1;break;
     }
     return ret;
@@ -495,16 +506,17 @@ HeaderWin::HeaderWin(int W,int H,const char *title):Fl_Window(W,H,title)
     fcd->filter("txt\t*.{txt}");
     default_icon(ico);
     begin();
-    headertable=new HeaderTable(20,60,460,440,"Trace Header");
+    headertable=new HeaderTable(20,80,460,430,"Trace Header");
     rt=new ResultTable(20,520,442,22,0);
-    vht=new VHeaderTable(500,60,140,520,"Volume Header");
-    new FreeCounterHeader(70,10,200,25,"Trace:");
-    app->endian_menu2=new Fl_Menu_Bar(280,10,200,25);
+    vht=new VHeaderTable(500,70,140,520,"Volume Header");
+    fch=new FreeCounterHeader(70,5,200,25,"Trace:");
+    fsh=new FreeSliderHeader(20,40,450,20);
+
+    app->endian_menu2=new Fl_Menu_Bar(280,5,200,25);
     app->endian_menu2->add("big-endian",0,endian_cb,0,FL_MENU_RADIO);
     app->endian_menu2->add("little-endian",0,endian_cb,0,FL_MENU_RADIO);
     app->update_endian_menu(app->endian_menu2);
-
-    check_text_but=new Fl_Button(520,10,100,25,"Text Header->");
+    check_text_but=new Fl_Button(520,5,100,25,"Text Header->");
     check_text_but->callback([](Fl_Widget *w,void *)
     {
         Fl_Button *check_text_but=(Fl_Button*)w;
@@ -801,6 +813,7 @@ FreeCounterHeader::FreeCounterHeader(int X,int Y,int W,int H,const char *title):
     {
         Fl_Counter *fcr=(Fl_Counter*)w;
         headertable->trace_num=(long long)fcr->value()-1;
+        fsh->value(fcr->value());
         headertable->get_hdr();
         headertable->redraw();
         rt->redraw();
@@ -825,17 +838,17 @@ int FreeCounterHeader::handle(int event)
             fi_curr->copy_label(trace_range_s);
             fi_curr->value(ccurr);
             set_ok=new Fl_Button(200,50,80,30,"确认");
-            set_ok->callback([](Fl_Widget *,void *data)
+            set_ok->callback([](Fl_Widget *,void *)
             {
-                FreeCounterHeader *fch=(FreeCounterHeader*)data;
                 long long V=atoi(fch->fi_curr->value());
                 headertable->trace_num=V-1;
                 fch->value(V);
+                fsh->value(V);
                 Fl::delete_widget(fch->counter_set);
                 headertable->get_hdr();
                 headertable->redraw();
                 rt->redraw();
-            },this);
+            });
             counter_set->end();
             counter_set->show();
         }
@@ -843,6 +856,25 @@ int FreeCounterHeader::handle(int event)
         break;
     }
     return ret;
+}
+
+FreeSliderHeader::FreeSliderHeader(int X,int Y,int W,int H):Fl_Slider(X,Y,W,H)
+{
+    type(5);
+    box(FL_FLAT_BOX);
+    step(1);
+    fl_color(FL_RED);
+    bounds(1,app->traces-headertable->trace_s_h+1);
+    value(1);
+    selection_color(FL_CYAN);
+    callback([](Fl_Widget *,void *)
+    {
+        headertable->trace_num=(long long)fsh->value()-1;
+        fch->value(fsh->value());
+        headertable->get_hdr();
+        headertable->redraw();
+        rt->redraw();
+    });
 }
 
 void App::change_profile()
@@ -1683,6 +1715,8 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
     trace_slider->value(1);
     trace_slider->callback([](Fl_Widget *w,void *)
     {
+        ims->show_red_line=false;
+        if(app->PlotWin->shown())app->PlotWin->hide();
         Fl_Scrollbar *fcs=(Fl_Scrollbar*)w;
         long long V=(long long)fcs->value()-1;
         app->trace_num=V;
@@ -1872,7 +1906,7 @@ void App::read_data(const char *fname,bool utf_flag)
 	else fpi=fopen(fname,"rb");
     if(fpi==NULL)
     {
-        fl_alert("文件不存在!输入的路径为:%s\n可尝试在主窗口中打开",fname);
+        fl_alert("文件似乎不存在=.=输入的路径为:%s\n但可尝试拖入主窗口",fname);
         return;
     }
     fseeko64(fpi,0,SEEK_END);
@@ -2358,7 +2392,7 @@ void expand_right_menu(int evx,int evy,char *num)
         app->ColorbarWin->show();
     },0);
     
-    right_menu1.add("该列数据_",0,[](Fl_Widget *,void *userdata)
+    right_menu1.add("该列数据",0,[](Fl_Widget *,void *userdata)
     {
         MenuData *data=(MenuData*)userdata;
         ims->red_line_x=data->evx;
@@ -2369,7 +2403,7 @@ void expand_right_menu(int evx,int evy,char *num)
         plt=new Plot(0,0,700,200);
         app->PlotWin->end();
         app->PlotWin->show();
-        plt->evx=data->evx;
+        plt->evx_app=data->evx;
         for(int i=0;i<app->samples;i++)
         {
             plt->p_max=(app->seis[(data->evx-1)*app->samples+i]>plt->p_max)?app->seis[(data->evx-1)*app->samples+i]:plt->p_max;
