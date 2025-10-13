@@ -1236,9 +1236,10 @@ void Cutter::cut_cb(Fl_Widget *,void *)
         {
             fread(&f,4,1,app->fpi);
             fwrite(&f,4,1,app->fpo);
-            fseeko64(app->fpi,dsample*4,1);
+            if(dsample)fseeko64(app->fpi,dsample*4,1);
         }
-        fseeko64(app->fpi,4*(((end_sample-start_sample)%(dsample+1))-dsample-1)+4*(app->samples-end_sample)+dtrace*(240+4*app->samples),1);
+        if(dsample)fseeko64(app->fpi,-dsample*4,1);
+        fseeko64(app->fpi,4*(app->samples-end_sample)+dtrace*(240+4*app->samples),1);
     }
     cutter->remove(progress);
     cutter->redraw();
@@ -1485,7 +1486,7 @@ Converter::Converter(int W,int H,const char *title):Fl_Window(W,H,title)
             item->set();
             sprintf(outfilename,"%s%s_pc.sgy",app->filenames.path_slash,app->filenames.base);
             input->value(outfilename);
-        }
+        } 
         open_file_format=new Fl_Button(410,125,40,25,"@fileopen");
         open_file_format->callback([](Fl_Widget *,void *)
         {
