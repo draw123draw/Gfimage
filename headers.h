@@ -8,6 +8,7 @@
 
 #include<FL/Fl_Box.H>
 #include<FL/Fl_Button.H>
+#include<FL/Fl_Toggle_Button.H>
 #include<FL/Fl_Input.H>
 #include<FL/Fl_Output.H>
 #include<FL/Fl_Menu_Bar.H>
@@ -63,8 +64,8 @@ class Plot;
 class Progress;
 class Scatter;
 class Scoordinate;
-class FreeCounter;
 class FreeCounterHeader;
+class FreeSliderHeader;
 class Property;
 class Converter;
 class Cutter;
@@ -116,9 +117,10 @@ class Plot:public Fl_Gl_Window
 {
 public:
     void draw()override;
+    bool draw_mouse_line=false;
     Plot(int x,int y,int Width,int Height);
     int handle(int event)override;
-    int evx;
+    int evx_app;
     float p_min,p_max;
 };
 
@@ -192,6 +194,12 @@ public:
     int handle(int event)override;
 };
 
+class FreeSliderHeader:public Fl_Slider
+{
+public:
+    FreeSliderHeader(int X,int Y,int W,int H);
+};
+
 class Cutter:public Fl_Window
 {
     static void cut_cb(Fl_Widget *,void *);
@@ -250,6 +258,7 @@ public:
     bool first_read=true;
     Fl_Window *ColorbarWin=NULL,*PlotWin=NULL;
     Fl_Menu_Bar *menus,*endian_menu1,*endian_menu2;
+    Fl_Toggle_Button* search_button;
     bool is_bin=false,is_le=false;
     char filename[256],traces_c[32],samples_c[32],ld4_c[64];
     char fmt,fmk;
@@ -281,7 +290,7 @@ public:
     void change_profile_bin();
     void update_slider();
     void format_correct(float *seis_,int length);
-    void read_data(const char *fname,bool utf_flag=true);
+    void read_data(const char *fname);
     void ieee2ibm(float *seis_b,int length);//公式已经考虑了字节序，无需再用swap_bytes转换
 };
 
@@ -345,6 +354,8 @@ Imagesc *ims=NULL;
 Plot *plt=NULL;
 // FkWin *fkwin=NULL;
 HeaderWin *hdrwin=NULL;
+FreeCounterHeader *fch=NULL;
+FreeSliderHeader *fsh=NULL;
 Scatter *scatter=NULL;
 Property *property=NULL;
 Cutter *cutter=NULL;
