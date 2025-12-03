@@ -1696,6 +1696,7 @@ App::App(int X,int Y,int Width,int Height,const char *title):Fl_Window(X,Y,Width
         Fl_Int_Input *tcs=(Fl_Int_Input*)w;
         app->trace_counter->step(atoi(tcs->value()));
     });
+    
     tc_step->hide();
     trace_counter=new Fl_Spinner(w()-150,0,100,height_of_menu);
     trace_counter->type(FL_INT_INPUT);
@@ -1896,18 +1897,18 @@ void App::update_figure()
     }
 }
 
-void App::read_data(const char *fname,bool utf_flag)
+void App::read_data(const char *fname)
 {
     ims->initial_ims();
     int i;
     is_bin=false;
     if(!first_read)
         app->close_them(true);
-    if(utf_flag)fpi=fl_fopen(fname,"rb");
-	else fpi=fopen(fname,"rb");
+    strcpy(filename,fname);
+    fpi=fl_fopen(filename,"rb");
     if(fpi==NULL)
     {
-        fl_alert("文件似乎不存在=.=输入的路径为:%s\n但可尝试拖入主窗口",fname);
+        fl_alert("文件似乎不存在=.=输入的路径为:%s\n但可尝试拖入主窗口",filename);
         return;
     }
     fseeko64(fpi,0,SEEK_END);
@@ -1955,7 +1956,6 @@ void App::read_data(const char *fname,bool utf_flag)
     }
     format_correct(seis,trace_s*samples);
     detect_nan();
-    
     update_figure();
     trace_num=0;
     Fl_Menu_Item *item;
@@ -2006,8 +2006,7 @@ void App::read_data(const char *fname,bool utf_flag)
         item=(Fl_Menu_Item*)menus->find_item("data?/int32-be");item->set();
         break;
     }
-    strcpy(filename,fname);
-    label(fname);
+    label(filename);
     findnames(app->filename,&(app->filenames));
     update_slider();
     redraw();
@@ -2079,8 +2078,7 @@ BinPara::BinPara(int W,int H,const char* title):Fl_Window(W,H,title)
         app->traces=atoi(binpara->traces_input->value());
         app->samples=atoi(binpara->samples_input->value());
         binpara->pass=true;
-        Fl_Menu_Item *item=(Fl_Menu_Item*)app->menus->find_item("Tools/Textual Header Editor");item->flags=FL_MENU_INACTIVE;
-        item=(Fl_Menu_Item*)app->menus->find_item("Tools/Headers");item->flags=FL_MENU_INACTIVE;
+        Fl_Menu_Item *item=(Fl_Menu_Item*)app->menus->find_item("Tools/Headers");item->flags=FL_MENU_INACTIVE;
         Fl::delete_widget(binpara);
     });
     notes=new Fl_Box(0,80,400,120);
@@ -2435,6 +2433,11 @@ int main(int argc,char **argv)
     app=new App(100,100,600,600,"Open a segy file");
     app->show(1,argv);
     if(argc>1)
-        app->read_data(argv[1],false);
+    {
+        char fname[512];
+        LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
+        WideCharToMultiByte(CP_UTF8, 0, argvw[1], -1, fname, sizeof(fname), NULL, NULL);
+        app->read_data(fname);
+    }
     return Fl::run();
 }
