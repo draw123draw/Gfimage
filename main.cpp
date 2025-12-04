@@ -2434,10 +2434,14 @@ int main(int argc,char **argv)
     app->show(1,argv);
     if(argc>1)
     {
+#ifdef _WIN32
         char fname[512];
         LPWSTR* argvw = CommandLineToArgvW(GetCommandLineW(), &argc);
         WideCharToMultiByte(CP_UTF8, 0, argvw[1], -1, fname, sizeof(fname), NULL, NULL);
         app->read_data(fname);
+#else
+        app->read_data(argv[1]);
+#endif
     }
     return Fl::run();
 }
