@@ -367,5 +367,5 @@ MapViewWin* mapview = NULL;
 void findnames(char* filename, manynames* outfile);
 void expand_right_menu(int evx, int evy, char* num);
 void check_progress(Progress* progress, long long tr, long long total);
-
+int istxt1sgy2(const char* path);
 #endif
