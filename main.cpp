@@ -2030,7 +2030,6 @@ void App::read_data(const char* fname)
     sprintf(ld4_c, "%lld", l / 4);
     fseeko64(fpi, 0, 0);
     fread(hdr, 1, 3600, fpi);
-    // fprintf(stderr,"%d,%d\n",hdr[3224],hdr[3225]);
     fseeko64(fpi, 0, 0);
     fmt = hdr[3224] + hdr[3225];
     if (fmt != 1 && fmt != 5 && fmt != 2)
